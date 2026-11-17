@@ -7,7 +7,7 @@ Loom is checked in four independent layers. Each one catches a different class o
 | 1. Golden model + lockstep diff | Every architectural register of every engine, the GPIO/OE outputs and the IRQ flags, compared **every clock cycle** between the RTL and the Python ISS, over random programs, configurations, pin stimulus and host traffic | `tools/loom/sim.py`, `test/test_diff.py` |
 | 2. Protocol scenarios | 22 end-to-end protocol tests against **independent** device models (written from the protocol specifications, sharing no code with the engine or its programs), run on both the ISS and the RTL, with all host accesses through the real SPI interface | `test/scenarios.py`, `test/models.py`, `test/test_protocols.py`, `test/run_iss.py` |
 | 3. Formal | k-induction proof of the FIFO against a reference queue; bounded model check of the engine's core invariants from reset | `formal/`, assertions under `` `ifdef FORMAL `` in `src/loom_engine.v` |
-| 4. Gate level | The smoke test, **all protocol scenarios and the host-driver test**, on the post-synthesis IHP-cell netlist (33.7k cells, vendor cell models): 18/18 pass. The official PnR-netlist run (`GATES=yes`) follows hardening. | `make -B GATES=synth` / `GATES=yes` |
+| 4. Gate level | The smoke test, **all protocol scenarios and the host-driver test**, on the post-synthesis IHP-cell netlist (33.9k cells, vendor cell models): 24/24 pass. The official PnR-netlist run (`GATES=yes`) follows hardening. | `make -B GATES=synth` / `GATES=yes` |
 
 ## 1. Golden model and lockstep differential testing
 
