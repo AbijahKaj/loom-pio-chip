@@ -5,9 +5,9 @@ Loom is checked in four independent layers. Each one catches a different class o
 | Layer | What it checks | Where |
 |---|---|---|
 | 1. Golden model + lockstep diff | Every architectural register of every engine, the GPIO/OE outputs and the IRQ flags, compared **every clock cycle** between the RTL and the Python ISS, over random programs, configurations, pin stimulus and host traffic | `tools/loom/sim.py`, `test/test_diff.py` |
-| 2. Protocol scenarios | 17 end-to-end protocol tests against **independent** device models (written from the protocol specifications, sharing no code with the engine or its programs), run on both the ISS and the RTL, with all host accesses through the real SPI interface | `test/scenarios.py`, `test/models.py`, `test/test_protocols.py`, `test/run_iss.py` |
+| 2. Protocol scenarios | 22 end-to-end protocol tests against **independent** device models (written from the protocol specifications, sharing no code with the engine or its programs), run on both the ISS and the RTL, with all host accesses through the real SPI interface | `test/scenarios.py`, `test/models.py`, `test/test_protocols.py`, `test/run_iss.py` |
 | 3. Formal | k-induction proof of the FIFO against a reference queue; bounded model check of the engine's core invariants from reset | `formal/`, assertions under `` `ifdef FORMAL `` in `src/loom_engine.v` |
-| 4. Gate level | The smoke test, **all 17 protocol scenarios and the host-driver test**, on the post-synthesis IHP-cell netlist (33.7k cells, vendor cell models): 18/18 pass. The official PnR-netlist run (`GATES=yes`) follows hardening. | `make -B GATES=synth` / `GATES=yes` |
+| 4. Gate level | The smoke test, **all protocol scenarios and the host-driver test**, on the post-synthesis IHP-cell netlist (33.7k cells, vendor cell models): 18/18 pass. The official PnR-netlist run (`GATES=yes`) follows hardening. | `make -B GATES=synth` / `GATES=yes` |
 
 ## 1. Golden model and lockstep differential testing
 
@@ -49,6 +49,8 @@ Each scenario configures engines exactly as an application would and checks the 
 | USB low-speed RX, incl. **1.5% clock error** and a corrupted packet | `UsbLsDriver`; the hardware CRC residue must be 0x800D for good packets and differ for the corrupted one |
 | 10BASE-T TX at full rate (quad-SPI host feed) | Offline Manchester decoder and `zlib.crc32` FCS; differential pair must stay complementary |
 | CAN 2.0 TX | Reference CAN stuffer (incl. trailing stuff bit) and CRC15 |
+| CAN 2.0 RX, incl. **0.8% clock error**; end of frame detected via the stuff-error event | Reference stuffer driving the line; received bits must pass CRC15 |
+| Manchester RX (10BASE-T framing at 1 Mb/s), incl. **−1% clock error**, and a **phase sweep** starting frames at every offset within a half-bit, back to back | Reference Manchester encoder; frame bytes after SFD compared |
 | WS2812 | Pulse-width monitor (T0H / T1H in spec) |
 | PS/2 RX | `PS2Device`, incl. parity and stop bits |
 | Pulse capture | `PulseGen` with known intervals |
@@ -96,6 +98,8 @@ Run with `formal/run.sh` (plain Yosys, no SymbiYosys needed).
 | 6 | An over-strict formal assertion: an X-counted transmit *does* complete on a trailing stuff bit, by design. The assertion was refined. | BMC counterexample |
 | 7 | Synthesis with `DELAY 4` inserted ~34k buffers (947k µm²); first PnR failed detailed placement. Switched to `AREA 0`. | Local LibreLane run |
 | 8 | Routing congestion on Metal3 with a 64×16, 4-port imem. Reduced to 32 entries; density/derating tuned. | Local LibreLane global-routing report |
+| 10 | **DPLL race:** when an input edge arrived in the same cycle as a free-running tick, that tick executed at the start of the symbol and the re-phased divider scheduled another at its centre, so one symbol was sampled twice. This could misalign USB, CAN and Manchester receive at start of packet, depending on phase. Fixed in RTL: in DPLL mode the tick coinciding with an edge is suppressed. | Manchester RX with clock skew; regression: phase-sweep scenario |
+| 11 | Manchester RX program used a level-sensitive `wait` to find the preamble; joining late, it could lock to the wrong half-bit. Now edge-qualified (`wait 0` then `wait 1`). | Phase-sweep scenario (back-to-back frames) |
 | 9 | Test-harness bugs (cocotb read-after-write in one timestep; a model treating a reset-low line as a start bit; quad data pins overwritten by the pin resolver). | Debugging failing scenarios: the bugs were in the checkers, not the design |
 
 ## 5. How to run
@@ -113,8 +117,22 @@ synth/area.sh ; synth/harden.sh
 
 ## 6. Tools and AI assistance
 
-*(Entrants are asked to describe their use of AI tools. Edit this section to reflect your own process.)*
+The competition asks entrants to describe their use of AI tools.
 
-An AI coding assistant was used during development to help write RTL, the Python toolchain, tests and documentation,
-and to run and debug the simulation and hardening flows. Every design decision was reviewed by the author, and all
-claims in this document are backed by the tests and logs in the repository.
+**Author's decisions.** The author chose to enter and set the direction and constraints: Verilog with cocotb (rather
+than Hardcaml), a PIO-style multi-engine architecture with generic line helpers, the scope of protocols, keeping all
+work local, and where and how the layout flow is run.
+
+**AI assistance.** An AI coding assistant (Claude, used through Claude Code) implemented the work in that direction:
+* the RTL and the Python toolchain (assembler, cycle-exact ISS, export tool), the protocol programs and the host driver;
+* the verification environment: lockstep differential test, device models, protocol scenarios, formal properties,
+  gate-level flow;
+* running the simulators, formal tools and the LibreLane flow, and debugging the failures they exposed;
+* the first drafts of this documentation.
+
+**How the output was checked.** The assistant's output was not taken on trust. Every claim in these documents is
+tied to a test or log in the repository (`./check.sh` re-runs all of it). Several of the bugs in §4 were mistakes
+made during AI-assisted development and then caught by the independent checks: the CAN timing gap, the over-strict
+formal assertion, the DPLL edge/tick race, the late-join alignment bug, and several test-harness bugs. That is why
+the verification uses independent models and a second implementation (the ISS) rather than relying on the code's
+author to check it.

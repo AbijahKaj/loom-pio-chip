@@ -18,3 +18,5 @@ results.xml
 tt/
 runs/
 build/
+__pycache__/
+*.pyc

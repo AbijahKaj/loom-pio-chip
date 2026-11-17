@@ -615,3 +615,44 @@ class BitSampler:
             if self.t % self.bc == self.bc // 2 and len(self.bits) < self.n:
                 self.bits.append(v)
         self.prev = v
+
+
+class LevelDriver:
+    """Drives a sequence of line levels, one per (bit_cycles * (1 + ppm)) cycles; idles at `idle`."""
+
+    def __init__(self, gpio, unit_cycles, idle=1, ppm=0):
+        self.g, self.idle = gpio, idle
+        self.unit = unit_cycles * (1 + ppm * 1e-6)
+        self.queue = []
+        self.t = 0.0
+        self.level = idle
+
+    def send(self, levels):
+        self.queue += list(levels)
+
+    @property
+    def done(self):
+        return not self.queue
+
+    def drives(self):
+        return {self.g: self.level}
+
+    def tick(self, cyc, lv):
+        if not self.queue:
+            self.level = self.idle
+            return
+        if self.level == self.idle and self.t == 0.0 and not getattr(self, "_started", False):
+            self._started = True
+        self.level = self.queue[0]
+        self.t += 1
+        if self.t >= self.unit:
+            self.t -= self.unit
+            self.queue.pop(0)
+
+
+def manchester_levels(bits):
+    """IEEE 802.3: '1' = low then high, '0' = high then low (two half-bit levels per bit)."""
+    out = []
+    for b in bits:
+        out += [0, 1] if b else [1, 0]
+    return out

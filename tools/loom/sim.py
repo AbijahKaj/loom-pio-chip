@@ -109,10 +109,10 @@ class Engine:
         crc_wmask = nmask(crc_w6)
         crc_msb = (s["crc"] >> (crc_w6 - 1)) & 1
 
-        tick = en and s["div_cnt"] == 0
         ts_pin_v = (pins32 >> c["ts_pin"]) & 1
         ts_edge_ev = ((ts_pin_v & (s["ts_prev"] ^ 1)) & (c["ts_edge"] & 1)) | \
                      (((ts_pin_v ^ 1) & s["ts_prev"]) & (c["ts_edge"] >> 1))
+        tick = en and s["div_cnt"] == 0 and not (c["dpll_en"] and ts_edge_ev)
         since_edge = (ts - s["last_ts"]) & 0xFFFF
 
         txf, rxf = self.txf, self.rxf
@@ -452,6 +452,8 @@ class Engine:
                         nx["stuff_on"] = 0
                     if (imm >> 4) == 2:
                         nx["stuff_on"] = 1
+                    if (imm >> 4) == 3:
+                        nx.update(stuff_on=1, run=1, last_bit=0)
                 elif f_hi == 4:
                     pw_en, pw_dir, pw_base, pw_cnt, pw_val = 1, 1, c["set_base"], c["set_count"], imm
 

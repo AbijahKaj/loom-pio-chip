@@ -35,7 +35,7 @@ The delay starts only after the instruction completes. A stalled instruction add
 | 5 | `mov dst, [op]src` | `op`: none, `~` (invert), `::` (bit-reverse), `++` (increment). `dst`: `pins`, `x`, `y`, `crc`, `pindirs`, `pc`, `isr`, `osr`. `src`: `pins`, `x`, `y`, `null`, `status`, `crc`, `isr`, `osr`. |
 | 6 | `irq [set\|wait\|clear] N [rel]` | 8 shared flags. `wait` sets the flag, then stalls until someone clears it. `rel` adds the engine number to bits [1:0]. |
 | 7 | `set dst, imm6` | `pins` / `pindirs` (`set_count` pins from `set_base`), `x`, `y`. |
-| 7 | `helper flags…` | The SET HELPER port: `crc` (reset the CRC to its init value and re-load the skip count), `coder` (reset the stuff run, NRZI level and Manchester phase), `clear` (clear the stuff-error and edge flags), `arm` (re-arm the event trap), `stuff_on` / `stuff_off`. |
+| 7 | `helper flags…` | The SET HELPER port: `crc` (reset the CRC to its init value and re-load the skip count), `coder` (reset the stuff run, NRZI level and Manchester phase), `clear` (clear the stuff-error and edge flags), `arm` (re-arm the event trap), `stuff_on` / `stuff_off` / `stuff_pre0` (enable stuffing and pre-count one 0 bit, for a start bit already consumed by `wait`). |
 | – | `nop` | Assembles to `mov y, y`. |
 
 `status` (as a MOV source) = `{since_edge[15:0], 2'b0, edge_flag, stuff_err, osr_cnt[5:0], isr_cnt[5:0]}`.

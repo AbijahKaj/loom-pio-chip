@@ -335,6 +335,8 @@ def _encode(line: str, ctx: _Ctx, lineno: int):
         for f in _args(rest):
             if f.lower() not in isa.HELPER_FLAGS:
                 raise err(f"unknown helper flag {f}")
+            if f.lower().startswith("stuff") and v & 0x30:
+                raise err("only one stuff_* flag per helper")
             v |= isa.HELPER_FLAGS[f.lower()]
         return isa.OP_SET, isa.set_(isa.SET_DST["helper"], v)
 

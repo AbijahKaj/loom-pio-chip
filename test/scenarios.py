@@ -366,6 +366,101 @@ async def can_tx(b, bit_cycles=None):
     return {"bits": len(frame), "stuffed": len(stuffed)}
 
 
+# ====================================================================== CAN RX
+def _frame_words(words, msb_first):
+    """Reassemble the bit list from: full words..., partial word, status word."""
+    full, partial, status = words[:-2], words[-2], words[-1]
+    n = status & 63
+    if msb_first:
+        bits = [(w >> (31 - i)) & 1 for w in full for i in range(32)]
+        bits += [(partial >> (n - 1 - i)) & 1 for i in range(n)]
+    else:
+        bits = [(w >> i) & 1 for w in full for i in range(32)]
+        bits += [((partial >> (32 - n)) >> i) & 1 for i in range(n)] if n else []
+    return bits
+
+
+async def _rx_frame(b, eng, settle):
+    words = []
+    while True:
+        words += await b.drain(eng)
+        if (await b.irq()) & (1 << eng):
+            words += await b.drain(eng)
+            await b.clear_irq(1 << eng)
+            return words
+        await b.cycles(settle)
+
+
+async def can_rx(b, bit_cycles=120, ppm=0):
+    p = prog("can_rx")
+    drv = b.add(M.LevelDriver(8, bit_cycles, idle=1, ppm=ppm))
+    await b.load(p, 0)
+    await b.configure(0, p.config(0, clkdiv=bit_cycles, in_base=8, code_mode=R.CODE_NONE, stuff_en=False,
+                                  stuff_mode=1, stuff_n=5, ts_pin=8, ts_edge=R.EDGE_FALL, dpll=True,
+                                  autopush=True, trap_en=True, trap_event=R.EV_STUFF_ERR, trap_pol=1,
+                                  trap_addr=p.addr("eof")))
+    await b.enable(0b0001)
+    frames = [(0x123, [0xDE, 0xAD, 0x00, 0x00, 0x00]), (0x7FF, [0xFF] * 8), (0x000, [])]
+    got_all = []
+    for ident, data in frames:
+        bits = M.can_frame_bits(ident, data)
+        drv.send([1] * 12 + M.can_stuff(bits) + [1] * 10)     # idle, frame, delimiters + EOF + IFS
+        rx = _frame_words(await _rx_frame(b, 0, bit_cycles * 4), msb_first=True)
+        assert rx[:len(bits) - 1] == bits[1:], (hex(ident), rx[:40], bits[1:41])
+        # CRC check on the received bits (incl. the SOF the program consumed): residue 0
+        assert M.can_crc15([0] + rx[:len(bits) - 1]) == 0
+        got_all.append((hex(ident), len(bits)))
+        await b.wait_for(lambda: drv.done, max_cycles=bit_cycles * 200)
+    return {"frames": got_all}
+
+
+# ====================================================================== Manchester RX
+async def manchester_rx_phases(b, bitrate_cycles=60):
+    """Regression for the DPLL edge/tick coincidence bug: frames start at every offset in a half-bit."""
+    p = prog("manchester_rx")
+    half = bitrate_cycles // 2
+    drv = b.add(M.LevelDriver(8, half, idle=0))
+    await b.load(p, 0)
+    await b.configure(0, p.config(0, clkdiv=half, in_base=8, code_mode=R.CODE_MANCH, manch_pol=0,
+                                  ts_pin=8, ts_edge=R.EDGE_BOTH, dpll=True, in_shift_right=True,
+                                  autopush=True, trap_en=True, trap_event=R.EV_TIMEOUT, trap_pol=1,
+                                  trap_addr=p.addr("eof"), timeout=int(bitrate_cycles * 1.5)))
+    await b.enable(0b0001)
+    payload = [0x55] * 4 + [0xD5, 0xA5, 0x3C, 0x0F]
+    bits = [(x >> i) & 1 for x in payload for i in range(8)]
+    for phase in range(half):
+        await b.cycles(phase + 7)
+        drv.send(M.manchester_levels(bits) + [0] * 4)
+        rx = _frame_words(await _rx_frame(b, 0, bitrate_cycles * 4), msb_first=False)
+        k = next(i for i in range(1, len(rx)) if rx[i - 1] == 1 and rx[i] == 1) + 1
+        got = [sum(rx[k + 8 * j + i] << i for i in range(8)) for j in range(3)]
+        assert got == [0xA5, 0x3C, 0x0F], (phase, [hex(g) for g in got])
+        await b.wait_for(lambda: drv.done, max_cycles=bitrate_cycles * 100)
+    return {"phases": half}
+
+
+async def manchester_rx(b, bitrate_cycles=60, ppm=0):
+    p = prog("manchester_rx")
+    half = bitrate_cycles // 2
+    drv = b.add(M.LevelDriver(8, half, idle=0, ppm=ppm))
+    await b.load(p, 0)
+    await b.configure(0, p.config(0, clkdiv=half, in_base=8, code_mode=R.CODE_MANCH, manch_pol=0,
+                                  ts_pin=8, ts_edge=R.EDGE_BOTH, dpll=True, in_shift_right=True,
+                                  autopush=True, trap_en=True, trap_event=R.EV_TIMEOUT, trap_pol=1,
+                                  trap_addr=p.addr("eof"), timeout=int(bitrate_cycles * 1.5)))
+    await b.enable(0b0001)
+    frame = M.eth_frame([0x02, 0, 0, 0, 0, 1], [0x02, 0, 0, 0, 0, 2], 0x88B5, b"Manchester via Loom")
+    bits = [(x >> i) & 1 for x in frame for i in range(8)]
+    drv.send([0] * 8 + M.manchester_levels(bits) + [0] * 8)
+    rx = _frame_words(await _rx_frame(b, 0, bitrate_cycles * 8), msb_first=False)
+    # align on the SFD (…1 0 1 0 1 1): first occurrence of two consecutive ones
+    k = next(i for i in range(1, len(rx)) if rx[i - 1] == 1 and rx[i] == 1) + 1
+    body = rx[k:k + (len(frame) - 8) * 8]
+    got = bytes(sum(body[8 * j + i] << i for i in range(8)) for j in range(len(body) // 8))
+    assert got == frame[8:], (got[:16].hex(), frame[8:24].hex())
+    return {"bytes": len(got), "ppm": ppm}
+
+
 # ====================================================================== everything at once
 async def concurrent(b):
     """UART TX + UART RX + SPI controller + pulse capture on four engines simultaneously."""
@@ -420,5 +515,10 @@ ALL = [
     ("pulse_capture", pulse_capture, {}),
     ("ps2_rx", ps2_rx, {}),
     ("can_tx", can_tx, {}),
+    ("can_rx", can_rx, {}),
+    ("can_rx_skew", can_rx, {"ppm": 8000}),
+    ("manchester_rx", manchester_rx, {}),
+    ("manchester_rx_skew", manchester_rx, {"ppm": -10000}),
+    ("manchester_rx_phases", manchester_rx_phases, {}),
     ("concurrent", concurrent, {}),
 ]

@@ -26,6 +26,7 @@ HELPER_FLAGS = {
     "arm": 1 << 3,        # re-arm the event trap
     "stuff_off": 1 << 4,  # disable bit-stuffing
     "stuff_on": 2 << 4,   # enable bit-stuffing
+    "stuff_pre0": 3 << 4, # enable bit-stuffing and pre-count one 0 bit (start bit consumed by WAIT)
 }
 
 
@@ -96,7 +97,10 @@ def disasm(word: int, sideset_count=0, sideset_opt=False) -> str:
         s = f"irq {kind} {arg & 7}{' rel' if arg & 16 else ''}"
     else:
         if hi == 3:
-            s = "helper " + " ".join(k for k, v in HELPER_FLAGS.items() if (arg & 63) & v == v and v) or "helper"
+            imm = arg & 63
+            names = [k for k in ("crc", "coder", "clear", "arm") if imm & HELPER_FLAGS[k]]
+            names += {1: ["stuff_off"], 2: ["stuff_on"], 3: ["stuff_pre0"]}.get(imm >> 4, [])
+            s = "helper " + " ".join(names) if names else "set helper, 0"
         else:
             s = f"set {inv(SET_DST).get(hi, 'rsvd')}, {arg & 63}"
     dly_bits = 4 - sideset_count

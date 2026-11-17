@@ -153,8 +153,9 @@ CRC15, Ethernet CRC32, HDLC/X.25 CRC16, SMBus PEC and others.
 * A global 16-bit cycle counter. Each engine records the interval between edges on its `ts_pin` (rising, falling
   or both); `in tstamp, 16` reads it. Used for pulse capture, IR decoding, 1-Wire timing and auto-baud. Event 3
   (timeout) fires when no edge has arrived for `TIMEOUT` cycles.
-* **DPLL:** each edge re-phases the clock divider to mid-bit. The USB receiver uses it to sample correctly with a
-  1.5% clock error.
+* **DPLL:** each edge re-phases the clock divider to mid-bit, and a tick that would coincide with the edge is
+  suppressed, so the first sample after any edge lands mid-symbol. The USB, CAN and Manchester receivers use it
+  (tested with 1.5%, 0.8% and 1% clock errors).
 * **Traps:** any event can redirect the PC, e.g. on USB SE0 (end of packet) or SPI CS release, with no polling loop.
 
 ## 5. Software
@@ -164,7 +165,7 @@ CRC15, Ethernet CRC32, HDLC/X.25 CRC16, SMBus PEC and others.
 | `tools/loom/asm.py` | Assembler (PIO-flavoured syntax, `.side_set`, `.wrap`, `.define`, labels, expressions) |
 | `tools/loom/sim.py` | Cycle-exact golden model of the whole chip below the SPI layer |
 | `tools/loom/regs.py` | Register map and `EngineConfig` encoder (shared by tests and docs) |
-| `programs/*.loom` | 14 programs: `uart_tx`, `uart_rx`, `spi_cpha0`, `spi_cpha1` (modes 0–3 via `CPOL`), `spi_target`, `i2c_ctrl`, `usb_ls_tx`, `usb_ls_rx`, `eth10_tx`, `eth10_nlp`, `can_tx`, `ws2812`, `ps2_rx`, `pulse_capture` |
+| `programs/*.loom` | 16 programs: `uart_tx`, `uart_rx`, `spi_cpha0`, `spi_cpha1` (modes 0–3 via `CPOL`), `spi_target`, `i2c_ctrl`, `usb_ls_tx`, `usb_ls_rx`, `eth10_tx`, `eth10_nlp`, `manchester_rx`, `can_tx`, `can_rx`, `ws2812`, `ps2_rx`, `pulse_capture` |
 | `host/loomhost.py` | MicroPython host driver for the RP2350 |
 
 ## 6. Implementation numbers
@@ -186,6 +187,12 @@ Final numbers are in the hardening summary of the submission.
 ## 7. Known limitations
 
 * The host link (≤7.5 MHz single, ~30 Mb/s quad-write) bounds sustained streaming. 10BASE-T transmit needs paced
-  quad writes. 10BASE-T *receive* at 60 MHz (3 clocks per half-bit, behind a 2-FF synchroniser) is not claimed.
+  quad writes. 10BASE-T *receive* at the full 10 Mb/s (3 clocks per half-bit, behind a 2-FF synchroniser) is not
+  claimed; the same Manchester receive path is demonstrated at 1 Mb/s (`manchester_rx`).
 * FIFOs are 2 deep. Fast receive protocols should use autopush at 32 bits so the host has time to drain.
 * SPI target mode supports SCK up to about f_clk/24 (synchroniser plus instruction latency).
+* No I2C *target* program. START/STOP detection needs "SDA changed while SCL is high", a condition on two pins
+  and an edge. The current ISA can only express that with a polling loop or two cooperating engines, which does
+  not fit alongside a byte engine in 32 instructions. Candidate extensions: a second pattern register (WAIT/trap on
+  either pattern), or an IRQ flag as a trap event so one engine can redirect another. SPI target already
+  demonstrates the target role.

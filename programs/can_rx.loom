@@ -1,0 +1,23 @@
+; CAN 2.0 frame receiver.
+; De-stuffing in CAN mode (after 5 equal bits the next bit must be the complement; stuff_mode 1, n 5).
+; End of frame is detected generically: the 7 recessive EOF bits always violate the stuffing rule,
+; so the sticky stuff-error event traps to 'eof'.
+; in_base = RX; ts_pin = RX, ts_edge = fall, DPLL (CAN hard/soft sync on recessive->dominant edges);
+; clkdiv = f_clk / bitrate (one tick per bit). Coder: NRZ, stuff_mode 1, stuff_n 5.
+; in_shift_right = 0 (MSB first), autopush threshold 32. Trap: event stufferr, pol 1 -> eof.
+; Per frame the RX FIFO gets: full words (bits after SOF), the partial word (valid bits at the
+; bottom), and a status word ([5:0] = number of valid bits in the partial word). IRQ 0 (rel) is set.
+.program can_rx
+start:
+    set x, 0                    ; X = 0 -> unbounded X-counted receive (ends by trap)
+    wait 1 pin 0                ; bus recessive
+    helper coder clear arm stuff_pre0
+    wait 0 pin 0                ; SOF: consumed here, pre-counted by stuff_pre0
+    in.c pins, x                ; de-stuffed ID .. EOF
+eof:
+    mov y, status
+    push block                  ; partial word
+    mov isr, y
+    push block                  ; status word
+    irq set 0 rel
+    jmp start

@@ -14,7 +14,8 @@ pattern events that can trap the program counter. Together they let the same sil
 | Low-speed USB TX (NRZI + stuffing + EOP) | `usb_ls_tx` | ✔ |
 | Low-speed USB RX (DPLL, de-stuffing, CRC16 residue check, ±1.5 % clock) | `usb_ls_rx` | ✔ |
 | 10BASE-T TX at full rate (Manchester, quad-SPI host feed) | `eth10_tx`, `eth10_nlp` | ✔ (TX) |
-| CAN 2.0 TX (CAN-style stuffing) | `can_tx` | ✔ |
+| CAN 2.0 TX and RX (CAN-style stuffing, EOF via stuff-error event, ±0.8 % clock) | `can_tx`, `can_rx` | ✔ |
+| Manchester RX (10BASE-T framing at reduced rate, DPLL, ±1 % clock) | `manchester_rx` | ✔ |
 | WS2812, PS/2 RX, pulse/interval capture | `ws2812`, `ps2_rx`, `pulse_capture` | ✔ |
 | Four protocols concurrently | — | ✔ |
 

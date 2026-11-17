@@ -147,9 +147,11 @@ module loom_engine #(
   wire        crc_msb = crc[crc_top];
 
   // ---------------------------------------------------------------- divider / timestamps
-  wire        tick = en && !restart && (div_cnt == 16'd0);
   wire        ts_pin_v = pins32[ts_pin];
   wire        ts_edge_ev = ((ts_pin_v & ~ts_prev) & ts_edge[0]) | ((~ts_pin_v & ts_prev) & ts_edge[1]);
+  // In DPLL mode an edge re-phases the divider and suppresses a tick that would coincide with it,
+  // so the first sample after any edge lands mid-symbol (otherwise one symbol could be sampled twice).
+  wire        tick = en && !restart && (div_cnt == 16'd0) && !(dpll_en && ts_edge_ev);
   wire [15:0] since_edge = ts - last_ts;
 
   // ---------------------------------------------------------------- events
@@ -521,6 +523,8 @@ module loom_engine #(
               if (arg[3]) nx_trap_armed = trap_en;
               if (arg[5:4] == 2'b01) nx_stuff_on = 1'b0;
               if (arg[5:4] == 2'b10) nx_stuff_on = 1'b1;
+              // stuff_pre0: enable stuffing and pre-count one 0 bit (a start bit consumed by WAIT)
+              if (arg[5:4] == 2'b11) begin nx_stuff_on = 1'b1; nx_run = 4'd1; nx_last = 1'b0; end
             end
             3'd4: begin pw_en = 1'b1; pw_dir = 1'b1; pw_base = set_base; pw_cnt = {3'b0, set_count}; pw_val = {26'd0, arg[5:0]}; end
             default: ;

@@ -11,7 +11,7 @@ Each engine has **line helpers**, generic hardware for the hard parts of real-wo
 * edge timestamps, DPLL clock recovery, pin-pattern events and event traps (e.g. jump on USB end-of-packet).
 
 With these, the same silicon speaks UART, SPI (controller modes 0–3, and target), I2C (with clock stretching),
-low-speed USB (TX and RX), 10BASE-T transmit, CAN, WS2812, PS/2 and pulse capture, all from firmware. The programs are
+low-speed USB (TX and RX), 10BASE-T transmit, Manchester receive, CAN (TX and RX), WS2812, PS/2 and pulse capture, all from firmware. The programs are
 in `programs/`. The full description is in `docs/architecture.md` and `docs/isa.md`.
 
 The host (the demo board's RP2350) controls Loom over SPI. It loads programs, configures the engines and

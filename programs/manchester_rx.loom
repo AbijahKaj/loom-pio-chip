@@ -1,0 +1,26 @@
+; Manchester receiver (IEEE 802.3 polarity: '1' = low->high at mid-bit), e.g. 10BASE-T framing at a
+; reduced bit rate (full-rate 10BASE-T reception needs more than 3 clocks per half-bit).
+; One tick per half bit: clkdiv = f_clk / (2 * bitrate). DPLL on both edges of RX re-centres every
+; sample. The line idles low and the frame starts with a 1010... preamble.
+; in_base = RX; ts_pin = RX, ts_edge = both, DPLL. Coder: Manchester, polarity 0.
+; in_shift_right = 1 (LSB first), autopush threshold 32.
+; Trap: event timeout (no edge for longer than TRAPCFG.timeout, ~1.5 bit times), pol 1 -> eof.
+; Output per frame: full words, partial word (valid bits at the top), status word; IRQ 0 (rel).
+; Decoding starts two bits after the first rising edge seen; the host aligns on the SFD.
+.program manchester_rx
+start:
+    set x, 0
+    helper coder clear
+    wait 0 pin 0                ; edge-qualified: in a 1010... preamble a rising edge only occurs
+    wait 1 pin 0                ; at the middle of a '1' bit, so alignment holds even when joining late
+    helper arm                  ; bit 1, first half
+    nop                         ; bit 1, second half
+    in.c pins, x                ; from bit 2 on, until the line goes quiet
+eof:
+    jmp !x, start               ; trap before any data (idle line, armed at restart): ignore
+    mov y, status
+    push block
+    mov isr, y
+    push block
+    irq set 0 rel
+    jmp start
