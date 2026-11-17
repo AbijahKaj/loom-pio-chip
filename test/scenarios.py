@@ -172,7 +172,7 @@ async def usb_ls_tx(b, bit_cycles=40):
     for pid, payload in packets:
         bits = M.usb_packet_bits(pid, payload)
         await b.push_wait(0, len(bits), *pack_bits_lsb(bits))
-    await b.wait_for(lambda: len(mon.packets) >= len(packets), max_cycles=bit_cycles * 400)
+    await b.wait_for(lambda: len(mon.packets) >= len(packets), max_cycles=int(bit_cycles * 400))
     for (pid, payload), got in zip(packets, mon.packets):
         exp = [0x80, (pid & 0xF) | ((~pid & 0xF) << 4)]
         if payload is not None:
@@ -219,7 +219,7 @@ async def usb_ls_rx(b, bit_cycles=40, ppm=0):
                 words += await b.drain(0)
                 await b.clear_irq(1)
                 break
-            await b.cycles(bit_cycles * 4)
+            await b.cycles(int(bit_cycles * 4))
         assert len(words) >= 3, words
         full, partial, status, crc = words[:-3], words[-3], words[-2], words[-1]
         nbits = status & 63
@@ -235,7 +235,7 @@ async def usb_ls_rx(b, bit_cycles=40, ppm=0):
         else:
             assert crc != 0x800D, "corruption not detected by CRC"
         results.append((got, hex(crc)))
-        await b.cycles(bit_cycles * 10)
+        await b.cycles(int(bit_cycles * 10))
     return {"packets": results}
 
 
@@ -510,6 +510,8 @@ ALL = [
     ("usb_ls_tx", usb_ls_tx, {}),
     ("usb_ls_rx", usb_ls_rx, {}),
     ("usb_ls_rx_skew", usb_ls_rx, {"ppm": 15000}),
+    ("usb_ls_tx_40mhz", usb_ls_tx, {"bit_cycles": 40e6 / 1.5e6}),       # fractional divider 26.67
+    ("usb_ls_rx_40mhz_skew", usb_ls_rx, {"bit_cycles": 40e6 / 1.5e6, "ppm": -15000}),
     ("eth10_tx", eth10_tx, {}),
     ("ws2812", ws2812, {}),
     ("pulse_capture", pulse_capture, {}),

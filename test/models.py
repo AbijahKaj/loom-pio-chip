@@ -337,7 +337,8 @@ class UsbLsMonitor:
             self.t += 1
             if cur != self.prev:
                 self.last_edge = self.t
-            if (self.t - self.last_edge) % self.bc == self.bc // 2:
+            bc = int(round(self.bc))     # edges re-align the sampling, so a rounded bit time is fine
+            if (self.t - self.last_edge) % bc == bc // 2:
                 if cur == (0, 0):
                     self.state = "eop"
                     self.se0 = 1
