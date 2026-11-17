@@ -1,40 +1,52 @@
-# SPDX-FileCopyrightText: © 2024 Tiny Tapeout
+# SPDX-FileCopyrightText: © 2026 AbijahKaj
 # SPDX-License-Identifier: Apache-2.0
-
+"""Smoke test (also used for gate-level simulation): host SPI + one UART TX engine."""
 import cocotb
-from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles
+from cocotb.triggers import ClockCycles, FallingEdge
+
+from loomtb import Loom, R, prog
+
+
+async def uart_decode(lm, gpio, bit_cycles, nbytes, timeout=200000):
+    """Independent UART receiver model: samples the pad every clock."""
+    out = []
+    cyc = 0
+    while len(out) < nbytes and cyc < timeout:
+        await FallingEdge(lm.dut.clk)
+        cyc += 1
+        if lm.gpio(gpio) == 0:
+            await ClockCycles(lm.dut.clk, bit_cycles // 2)
+            assert lm.gpio(gpio) == 0, "glitch on start bit"
+            b = 0
+            for i in range(8):
+                await ClockCycles(lm.dut.clk, bit_cycles)
+                b |= lm.gpio(gpio) << i
+            await ClockCycles(lm.dut.clk, bit_cycles)
+            assert lm.gpio(gpio) == 1, "framing error (stop bit)"
+            out.append(b)
+    return out
 
 
 @cocotb.test()
-async def test_project(dut):
-    dut._log.info("Start")
+async def test_smoke(dut):
+    lm = Loom(dut)
+    await lm.start()
 
-    # Set the clock period to 10 us (100 KHz)
-    clock = Clock(dut.clk, 10, unit="us")
-    cocotb.start_soon(clock.start())
+    assert await lm.read(R.ID) == R.LOOM_ID, "bad ID"
+    await lm.write(R.OD, 0xA5)
+    assert await lm.read(R.OD) == 0xA5
+    await lm.write(R.OD, 0)
 
-    # Reset
-    dut._log.info("Reset")
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
-
-    dut._log.info("Test project behavior")
-
-    # Set the input values you want to test
-    dut.ui_in.value = 20
-    dut.uio_in.value = 30
-
-    # Wait for one clock cycle to see the output values
-    await ClockCycles(dut.clk, 1)
-
-    # The following assersion is just an example of how to check the output values.
-    # Change it to match the actual expected output of your module:
-    assert dut.uo_out.value == 50
-
-    # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
+    # UART TX on GPIO13 (uo[1]): 4 ticks/bit, clkdiv 4 -> 16 clocks per bit
+    p = prog("uart_tx")
+    await lm.load(p, 0)
+    await lm.configure(0, p.config(0, clkdiv=4, out_base=13, out_count=1, sideset_base=13,
+                                   out_shift_right=True))
+    await lm.push(0, 0x55, 0xA3)
+    await lm.enable(0b0001)
+    got = await uart_decode(lm, 13, 16, 3)
+    if len(got) < 3:
+        await lm.push(0, 0x0F)
+        got += await uart_decode(lm, 13, 16, 3 - len(got))
+    assert got[:2] == [0x55, 0xA3], got
+    dut._log.info(f"UART TX bytes: {[hex(b) for b in got]}")
