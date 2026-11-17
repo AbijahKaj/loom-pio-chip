@@ -23,9 +23,12 @@
   "//": "derate routing resources a little less than the default (0.3) as GRT itself suggests.",
   "GRT_ADJUSTMENT": 0.2,
 
+  "//": "Loom: 25 ns (40 MHz) is the worst-case (slow 1.08 V / 125 C) sign-off target. Run 3 at 16 ns routed",
+  "//": "cleanly (DRC/LVS/antenna pass) with a ~16.4 ns typical-corner and ~26 ns slow-corner critical path.",
+
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",
-  "CLOCK_PERIOD": 16,
+  "CLOCK_PERIOD": 25,
 
   "//": "Hold slack margin - Increase them in case you are getting hold violations.",
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
