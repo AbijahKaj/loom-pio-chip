@@ -7,7 +7,7 @@ Loom is checked in four independent layers. Each one catches a different class o
 | 1. Golden model + lockstep diff | Every architectural register of every engine, the GPIO/OE outputs and the IRQ flags, compared **every clock cycle** between the RTL and the Python ISS, over random programs, configurations, pin stimulus and host traffic | `tools/loom/sim.py`, `test/test_diff.py` |
 | 2. Protocol scenarios | 17 end-to-end protocol tests against **independent** device models (written from the protocol specifications, sharing no code with the engine or its programs), run on both the ISS and the RTL, with all host accesses through the real SPI interface | `test/scenarios.py`, `test/models.py`, `test/test_protocols.py`, `test/run_iss.py` |
 | 3. Formal | k-induction proof of the FIFO against a reference queue; bounded model check of the engine's core invariants from reset | `formal/`, assertions under `` `ifdef FORMAL `` in `src/loom_engine.v` |
-| 4. Gate level | The smoke test (SPI register access, imem load, UART TX) on the hardened netlist | `test/test.py` with `GATES=yes` |
+| 4. Gate level | The smoke test, **all 17 protocol scenarios and the host-driver test**, on the post-synthesis IHP-cell netlist (33.7k cells, vendor cell models): 18/18 pass. The official PnR-netlist run (`GATES=yes`) follows hardening. | `make -B GATES=synth` / `GATES=yes` |
 
 ## 1. Golden model and lockstep differential testing
 
@@ -73,6 +73,16 @@ SPI block, read-ahead/pop semantics, quad writes and realistic host latency.
   * shift counters never exceed 32.
 
 Run with `formal/run.sh` (plain Yosys, no SymbiYosys needed).
+
+## 3b. Toolchain and host driver
+
+* `test/unit_tests.py`: assembler/disassembler round trip for every program, rejection of malformed source,
+  random `EngineConfig` encodings decoded by the ISS, and the **CRC helper against seven catalogue CRCs**
+  (CRC-8/SMBUS, CRC-16/XMODEM, CRC-16/USB, CRC-15/CAN, CRC-32/ISO-HDLC (Ethernet), CRC-32/MPEG-2, CRC-5/USB), all
+  matching their standard check values for "123456789".
+* `test/test_host.py`: the **real MicroPython driver** (`host/loomhost.py`) runs inside cocotb through
+  `bridge`/`resume`. Its bit-banged SPI, in single and quad mode, loads an app produced by `tools/loom/export.py`
+  and sends "Hi!\n" out of the UART engine, which the independent UART model decodes.
 
 ## 4. Bugs found (and what found them)
 
