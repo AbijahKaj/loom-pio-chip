@@ -178,7 +178,8 @@ buffers on this design.
 | Std-cell area (Yosys/ABC, typ corner, pre-PnR) | ~459k µm² (~38% of the 8x4 core) |
 | Flip-flops | ~3.8k |
 | Instruction memory | 32 × 16 flops, 4 read ports (the ISA has 6-bit addresses; 64 entries fit the area but not the 3-layer routing budget) |
-| Clock target | 16 ns in the flow (62.5 MHz), operated at 60 MHz |
+| Clock | Signed off at 25 ns (40 MHz) at all corners; routed critical path ≈16.4 ns at typical (60 MHz capable at nominal conditions), ≈26 ns at slow 1.08 V/125 °C |
+| Critical path | PC → 32:1 instruction-memory read → decode (high fanout) → execute, in one cycle. A registered instruction fetch is the next step for worst-case 60 MHz. |
 
 The first full PnR attempts (64-entry imem, density 60%) placed and closed timing at 20 ns with +6.8 ns slack after
 CTS. Global routing then overflowed on Metal3, which led to the 32-entry memory and the density/derating changes.

@@ -7,7 +7,7 @@
 | `SYNTH_STRATEGY` | `AREA 0` | LibreLane's default `DELAY 4` ABC script inserted ~34k buffers on this design (947k µm² instance area, detailed placement failed). `AREA 0` maps it to ~460k µm². Timing is then fixed in PnR by the resizer. |
 | `PL_TARGET_DENSITY_PCT` | 50 | Spread the cells: only Metal2–4 are available for signal routing on the TT IHP tiles. |
 | `GRT_ADJUSTMENT` | 0.2 | Default 0.3. Global routing itself reported that the derating was too pessimistic. |
-| `CLOCK_PERIOD` | 16 ns | 62.5 MHz constraint, for operation at 60 MHz with margin. |
+| `CLOCK_PERIOD` | 25 ns | Sign-off at **all** corners (TT sets `TIMING_VIOLATION_CORNERS = *`) for 40 MHz worst case. See run 3 for the typical-corner 60 MHz figure. |
 
 ## History of runs
 
@@ -15,7 +15,8 @@
 |---|---|---|
 | 1 | 64×16 imem, `DELAY 4`, density 60 | Synthesis 947k µm² (34k buffers). Detailed placement failed after 3.1k hold buffers. |
 | 2 | 64×16 imem, `AREA 0`, density 60 | Synthesis 533k µm²; post-CTS utilisation 54%, **setup WNS +6.8 ns at 20 ns**. Global routing overflow 8.9k (Metal3 at 89%); detailed routing started with ~36k violations, so the run was stopped. |
-| 3 | 32×16 imem, density 50, GRT 0.2, 16 ns | Pending (to be run on the Linux build machine). |
+| 3 | 32×16 imem, density 50, GRT 0.2, 16 ns (Linux, Nix, no Docker) | **Routed clean**: global-routing overflow 0; detailed routing 0 violations after 2 antenna-diode rounds (137 + 18 diodes); **Magic DRC 0, LVS pass, antenna pass**; hold met at all corners. Setup: fast +5.2 ns, **typical −0.4 ns (≈16.4 ns path → 60 MHz passes at 16.67 ns)**, slow −10.1 ns (≈26 ns path). The flow failed only on setup at 16 ns. |
+| 4 | as run 3, `CLOCK_PERIOD` 25 ns | Running |
 
 ## Running it
 
