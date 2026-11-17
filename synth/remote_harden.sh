@@ -25,7 +25,7 @@ if [ -d loom ]; then git -C loom fetch -q ../loom.bundle main && git -C loom res
 else git clone -q loom.bundle loom; fi
 [ -d loom/tt ] || git clone -q https://github.com/TinyTapeout/tt-support-tools loom/tt
 git -C loom/tt fetch -q origin && git -C loom/tt checkout -q "$TT_REV"
-[ -d librelane ] || git clone -q --depth 1 --branch "$LL_TAG" https://github.com/librelane/librelane librelane
+[ -d librelane ] || git clone -q --branch "$LL_TAG" https://github.com/librelane/librelane librelane
 cat > run.sh <<'RUN'
 #!/bin/sh
 set -e
