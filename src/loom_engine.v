@@ -143,8 +143,8 @@ module loom_engine #(
   wire [5:0]  pull_th6 = (pull_th == 5'd0) ? 6'd32 : {1'b0, pull_th};
   wire [5:0]  crc_w6 = (crc_width == 6'd0 || crc_width > 6'd32) ? 6'd32 : crc_width;
   wire [31:0] crc_wmask = nmask(crc_w6);
-  wire [4:0]  crc_top = crc_w6 - 6'd1;
-  wire        crc_msb = crc[crc_top];
+  wire [5:0]  crc_top = crc_w6 - 6'd1;          // 0..31
+  wire        crc_msb = crc[crc_top[4:0]];
 
   // ---------------------------------------------------------------- divider / timestamps
   wire        ts_pin_v = pins32[ts_pin];
@@ -707,7 +707,7 @@ module loom_engine #(
   end
 `endif
 
-  assign dbg   = {6'd0, osr_cnt, stuff_on, mph, edge_flag, stuff_err, trap_armed, cb_active,
+  assign dbg   = {2'd0, osr_cnt, stuff_on, mph, edge_flag, stuff_err, trap_armed, cb_active,
                   irq_wait, 1'b0, isr_cnt, delay_cnt, pc};
   assign dbg_x = x;
 endmodule

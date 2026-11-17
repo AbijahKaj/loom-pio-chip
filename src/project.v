@@ -154,6 +154,7 @@ module tt_um_abijahkaj_loom (
   end
 
   // ------------------------------------------------------------ host read mux
+  wire [1:0] h_eng = h_addr[5:4] - 2'd1;   // engine index for addresses 0x10..0x4F
   always @(*) begin
     h_rdata  = 32'd0;
     h_rvalid = 1'b1;
@@ -176,11 +177,11 @@ module tt_um_abijahkaj_loom (
       3'd1, 3'd2, 3'd3, 3'd4: begin
         case (h_addr[3:0])
           4'h5: begin
-            h_rvalid = !rxf_empty[h_addr[6:4]-3'd1];
-            h_rdata  = h_rvalid ? rxf_head[h_addr[6:4]-3'd1] : 32'd0;
+            h_rvalid = !rxf_empty[h_eng];
+            h_rdata  = h_rvalid ? rxf_head[h_eng] : 32'd0;
           end
-          4'hE: h_rdata = dbg[h_addr[6:4]-3'd1];
-          4'hF: h_rdata = dbg_x[h_addr[6:4]-3'd1];
+          4'hE: h_rdata = dbg[h_eng];
+          4'hF: h_rdata = dbg_x[h_eng];
           default: ;
         endcase
       end
