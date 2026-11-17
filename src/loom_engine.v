@@ -664,6 +664,45 @@ module loom_engine #(
     end
   end
 
+`ifdef FORMAL
+  // ---------------------------------------------------------------- formal properties (formal/run.sh)
+  always @(*) begin
+    if (rst_n) begin
+      assert (osr_cnt <= 6'd32);
+      assert (isr_cnt <= 6'd32);
+      // repeat-without-consume: a stuff symbol or a Manchester first half consumes no data
+      if (exec && !stall && op == 3'd3 && coded && f_hi == 3'd0 && (need_stuff || !sym_done)) begin
+        assert (nx_osr == osr_e);
+        assert (nx_osr_cnt == osr_cnt_e);
+        assert (nx_x == x);
+        assert (nx_crc == crc);
+        if (!sym_done) assert (nx_pc == pc);   // a Manchester first half always repeats
+      end
+      // a discarded (stuffed) receive bit never reaches the ISR, the CRC or the FIFO
+      if (exec && !stall && op == 3'd2 && coded && sym_done && stuff_now) begin
+        assert (nx_isr == isr);
+        assert (nx_isr_cnt == isr_cnt);
+        assert (!rxf_push);
+        assert (nx_crc == crc);
+      end
+      // every consumed data bit advances exactly one OSR position
+      if (exec && !stall && op == 3'd3 && coded && sym_done && !need_stuff && osr_cnt_e < 6'd32)
+        assert (nx_osr_cnt == osr_cnt_e + 6'd1);
+      // a stalled instruction has no architectural effect
+      if (exec && stall) begin
+        assert (nx_x == x && nx_y == y && nx_isr == isr && nx_osr == osr && nx_pc == pc);
+        assert (!txf_pop && !rxf_push);
+        assert (nx_delay == delay_cnt);
+      end
+      // FIFO protocol
+      if (rxf_push) assert (!rxf_full);
+      if (txf_pop) assert (!txf_empty);
+      // nothing executes while delayed or not ticking
+      if (!tick) assert (nx_pc == pc && !txf_pop && !rxf_push && po_mask == 20'd0 && pd_mask == 20'd0);
+    end
+  end
+`endif
+
   assign dbg   = {6'd0, osr_cnt, stuff_on, mph, edge_flag, stuff_err, trap_armed, cb_active,
                   irq_wait, 1'b0, isr_cnt, delay_cnt, pc};
   assign dbg_x = x;

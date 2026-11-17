@@ -30,6 +30,7 @@ module tt_um_abijahkaj_loom (
   end
 
   // ------------------------------------------------------------ host SPI
+  reg         quad;      // HOSTCFG[0]: quad-write mode
   wire [6:0]  h_addr, h_wr_addr;
   wire [31:0] h_wdata;
   wire        h_wr, h_rd_pop;
@@ -40,6 +41,7 @@ module tt_um_abijahkaj_loom (
   loom_spi u_spi (
       .clk(clk), .rst_n(rst_n),
       .sck(ui_s2[0]), .cs_n(ui_s2[1]), .mosi(ui_s2[2]), .miso(miso),
+      .quad_en(quad), .qio(ui_s2[5:2]),
       .addr(h_addr), .rdata(h_rdata), .rvalid(h_rvalid), .rd_pop(h_rd_pop),
       .wr(h_wr), .wr_addr(h_wr_addr), .wdata(h_wdata));
 
@@ -115,6 +117,7 @@ module tt_um_abijahkaj_loom (
       gpio_out <= 20'd0;
       gpio_oe  <= 8'd0;
       od       <= 8'd0;
+      quad     <= 1'b0;
       ts       <= 16'd0;
     end else begin
       ts       <= ts + 16'd1;
@@ -135,6 +138,7 @@ module tt_um_abijahkaj_loom (
           4'h3: imem_ptr <= h_wdata[5:0];
           4'h5: imem_ptr <= imem_ptr + 6'd1;
           4'h8: od <= h_wdata[7:0];
+          4'hA: quad <= h_wdata[0];
           default: ;
         endcase
       end
@@ -162,6 +166,7 @@ module tt_um_abijahkaj_loom (
           4'h7: h_rdata = {12'd0, gpio_in};
           4'h8: h_rdata = {24'd0, od};
           4'h9: h_rdata = {24'd0, gpio_oe};
+          4'hA: h_rdata = {31'd0, quad};
           default: ;
         endcase
       end

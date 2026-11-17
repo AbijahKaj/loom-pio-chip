@@ -31,6 +31,7 @@ class Board:
         self.levels = [0] * 20
         self.cycle = 0
         self.rxbuf = {}            # RX words drained while waiting for TX space
+        self.slow_host = getattr(backend, "slow_host", False)
         backend.board = self
 
     def add(self, model):
@@ -82,6 +83,10 @@ class Board:
 
     async def read(self, addr, n=1):
         return await self.be.read(addr, n)
+
+    async def write_quad(self, addr, *words):
+        """Write using quad-SPI data (HOSTCFG.quad must be set)."""
+        await self.be.write(addr, *words, quad=True)
 
     async def load(self, program, origin=0):
         await self.write(R.IMEM_ADDR, origin)
@@ -172,7 +177,7 @@ class IssBackend:
         for _ in range(n):
             self._step()
 
-    async def write(self, addr, *words):
+    async def write(self, addr, *words, quad=False):
         for i, w in enumerate(words):
             a = addr if R.is_port(addr) else addr + i
             self._step(wr=(a, w & 0xFFFFFFFF))
@@ -222,7 +227,8 @@ class CocotbBackend:
             except ValueError:
                 uo, uio_out, uio_oe = 0, 0, 0
             b.resolve(uo, uio_out, uio_oe)
-            self.lm.ui = (self.lm.ui & 0x07) | b.ui_hi()
+            keep = 0x3F if self.lm.quad else 0x07     # quad writes own GPIO8..10 (ui[5:3])
+            self.lm.ui = (self.lm.ui & keep) | (b.ui_hi() & ~keep & 0xFF)
             dut.ui_in.value = self.lm.ui
             dut.uio_in.value = b.uio_in()
             b.tick_models()
@@ -231,8 +237,14 @@ class CocotbBackend:
         from cocotb.triggers import ClockCycles
         await ClockCycles(self.dut.clk, n)
 
-    async def write(self, addr, *words):
-        await self.lm.write(addr, *words)
+    slow_host = True
+
+    async def write(self, addr, *words, quad=False):
+        self.lm.quad = quad
+        try:
+            await self.lm.write(addr, *words)
+        finally:
+            self.lm.quad = False
 
     async def read(self, addr, n=1):
         return await self.lm.read(addr, n)

@@ -15,6 +15,7 @@ IRQ = 0x06         # RW  R: flags; W: clear [7:0], set [15:8]
 GPIO = 0x07        # RW  R: 20-bit input vector; W: GPIO output register
 OD = 0x08          # RW  open-drain enables for GPIO0..7
 OE = 0x09          # RW  output enables for GPIO0..7 (non open-drain pins)
+HOSTCFG = 0x0A     # RW  [0] quad-write mode: write data on {GPIO10, GPIO9, GPIO8, MOSI}
 
 LOOM_ID = 0x4C4F4F4D
 

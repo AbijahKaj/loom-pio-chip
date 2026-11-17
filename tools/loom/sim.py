@@ -610,6 +610,7 @@ class Chip:
         self.gpio_out = 0
         self.gpio_oe = 0
         self.od = 0
+        self.quad = 0
         self.ts = 0
         self.ui_s1 = self.ui_s2 = 0x02
         self.uio_s1 = self.uio_s2 = 0
@@ -632,7 +633,7 @@ class Chip:
         if addr < 0x10:
             return {
                 R.ID: R.LOOM_ID, R.CTRL: self.en, R.IMEM_ADDR: self.imem_ptr, R.IRQ: self.irq,
-                R.GPIO: self.gpio_in, R.OD: self.od, R.OE: self.gpio_oe,
+                R.GPIO: self.gpio_in, R.OD: self.od, R.OE: self.gpio_oe, R.HOSTCFG: self.quad,
                 R.FLEVEL: sum((len(e.txf.q) | len(e.rxf.q) << 4) << (8 * i) for i, e in enumerate(self.eng)),
             }.get(addr, 0), True
         n = (addr >> 4) - 1
@@ -700,6 +701,8 @@ class Chip:
                 self.imem_ptr = (self.imem_ptr + 1) & 63
             elif a == R.OD:
                 self.od = d & 0xFF
+            elif a == R.HOSTCFG:
+                self.quad = d & 1
         self.ui_s2, self.ui_s1 = self.ui_s1, ui_in & 0xFF
         self.uio_s2, self.uio_s1 = self.uio_s1, uio_in & 0xFF
         self.cycle += 1

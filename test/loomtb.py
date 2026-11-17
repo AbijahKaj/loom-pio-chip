@@ -117,17 +117,35 @@ class Loom:
             dut.ui_in.value = self.ui
         return inb
 
+    async def _spi_byte_quad(self, out_byte):
+        dut = self.dut
+        for nib in (out_byte >> 4, out_byte & 15):
+            # qio[0] = MOSI (ui[2]), qio[3:1] = ui[5:3]
+            self.ui = (self.ui & ~0x3C) | ((nib & 1) << 2) | ((nib >> 1) << 3)
+            dut.ui_in.value = self.ui
+            await ClockCycles(dut.clk, SPI_HALF)
+            self.ui |= 0x01
+            dut.ui_in.value = self.ui
+            await ClockCycles(dut.clk, SPI_HALF)
+            self.ui &= ~0x01
+            dut.ui_in.value = self.ui
+
     async def _cs(self, low):
         self.ui = (self.ui & ~0x02) | (0 if low else 0x02)
         self.dut.ui_in.value = self.ui
         await ClockCycles(self.dut.clk, SPI_HALF)
+
+    quad = False
 
     async def write(self, addr, *words):
         await self._cs(True)
         await self._spi_byte(addr & 0x7F)
         for w in words:
             for k in range(4):
-                await self._spi_byte((w >> (8 * k)) & 0xFF)
+                if self.quad:
+                    await self._spi_byte_quad((w >> (8 * k)) & 0xFF)
+                else:
+                    await self._spi_byte((w >> (8 * k)) & 0xFF)
         await ClockCycles(self.dut.clk, 3)
         await self._cs(False)
         await ClockCycles(self.dut.clk, 4)

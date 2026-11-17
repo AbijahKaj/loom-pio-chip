@@ -28,8 +28,9 @@ def pack_bits_msb(bits):
 
 
 # ====================================================================== UART
-async def uart_loopback(b, bit_cycles=32):
+async def uart_loopback(b, bit_cycles=None):
     """UART TX on GPIO13 checked by a model receiver; UART RX on GPIO8 fed by a model transmitter."""
+    bit_cycles = bit_cycles or (120 if b.slow_host else 32)     # 500 kbaud with the real SPI host
     tx_mon = b.add(M.UartMonitor(13, bit_cycles))
     data_in = [0x00, 0xFF, 0x5A, 0x81, 0x37]
     drv = b.add(M.UartDriver(8, bit_cycles, gap=3))
@@ -256,12 +257,20 @@ async def eth10_tx(b):
     await b.configure(0, p.config(0, clkdiv=3, out_base=16, out_count=2, set_base=16, set_count=2,
                                   code_mode=R.CODE_MANCH, manch_pol=0, diff=True, out_shift_right=True,
                                   autopull=True))
-    await b.enable(0b0001)
     b.add(Rec())
     words = pack_bits_lsb(bits)
-    await b.push(0, len(bits), words[0])
+    # 10 Mb/s needs a word every 192 clocks: switch the host link to quad-SPI writes
+    # (all writes from here on are quad), prefill, enable, then stream paced writes.
+    await b.write(R.HOSTCFG, 1)
+    await b.write_quad(R.ENG(0, R.TXF), len(bits), words[0])
+    await b.write_quad(R.CTRL, 0x11)
+    t = b.cycle + 20                # let the engine take the prefilled count and first word
     for w in words[1:]:
-        await b.push_wait(0, w)
+        if b.cycle < t:
+            await b.cycles(t - b.cycle)
+        await b.write_quad(R.ENG(0, R.TXF), w)
+        t += 190
+    await b.write_quad(R.HOSTCFG, 0)
     await b.cycles(len(bits) * 6 + 200)
     s = [x for x, _ in rec]
     assert all(x != y for x, y in rec if x or y) or True
@@ -303,10 +312,10 @@ async def ws2812(b):
 async def pulse_capture(b):
     p = prog("pulse_capture")
     intervals = [137, 52, 900, 33, 4000, 75, 610, 220]
-    b.add(M.PulseGen(11, intervals, start=400))
     await b.load(p, 0)
     await b.configure(0, p.config(0, ts_pin=11, ts_edge=R.EDGE_BOTH, autopush=True, push_thresh=32))
     await b.enable(0b0001)
+    b.add(M.PulseGen(11, intervals, start=b.cycle + 300))
     words = await b.collect(0, len(intervals) // 2, max_cycles=sum(intervals) + 4000)
     got = []
     for w in words:
@@ -319,10 +328,12 @@ async def pulse_capture(b):
 async def ps2_rx(b):
     p = prog("ps2_rx", CLK=9)
     codes = [0x1C, 0xF0, 0x1C, 0x5A]
-    b.add(M.PS2Device(clk=9, data=8, half_cycles=120, codes=codes))
+    dev = b.add(M.PS2Device(clk=9, data=8, half_cycles=120))
     await b.load(p, 0)
     await b.configure(0, p.config(0, in_base=8, in_shift_right=True))
     await b.enable(0b0001)
+    for c in codes:
+        dev.send(c)
     words = await b.collect(0, len(codes), max_cycles=len(codes) * 11 * 300 + 2000)
     frames = [w >> 21 for w in words]
     got = [(f >> 1) & 0xFF for f in frames]
@@ -334,7 +345,8 @@ async def ps2_rx(b):
 
 
 # ====================================================================== CAN TX
-async def can_tx(b, bit_cycles=20):
+async def can_tx(b, bit_cycles=None):
+    bit_cycles = bit_cycles or (120 if b.slow_host else 20)    # 500 kbit/s with the real SPI host
     p = prog("can_tx")
     frame = M.can_frame_bits(0x123, [0xDE, 0xAD, 0x00, 0x00, 0x00])
     stuffed = M.can_stuff(frame)
@@ -357,11 +369,10 @@ async def can_tx(b, bit_cycles=20):
 # ====================================================================== everything at once
 async def concurrent(b):
     """UART TX + UART RX + SPI controller + pulse capture on four engines simultaneously."""
-    bc = 32
+    bc = 120 if b.slow_host else 32
     tx_mon = b.add(M.UartMonitor(13, bc))
     drv = b.add(M.UartDriver(8, bc, gap=2))
     tgt = b.add(M.SpiTarget(sck=14, mosi=15, miso=9, responses=[0x11, 0x22, 0x33]))
-    b.add(M.PulseGen(11, [300, 120, 800, 77], start=500))
     ptx, prx, pspi, pcap = prog("uart_tx"), prog("uart_rx"), prog("spi_cpha0"), prog("pulse_capture")
     await b.load(ptx, 0)
     await b.load(prx, 4)
@@ -375,13 +386,14 @@ async def concurrent(b):
     await b.configure(3, pcap.config(15, ts_pin=11, ts_edge=R.EDGE_BOTH, autopush=True, push_thresh=32))
     await b.write(R.GPIO, 1 << 13)
     await b.enable(0b1111)
+    b.add(M.PulseGen(11, [300, 120, 800, 77], start=b.cycle + 200))
     await b.push(0, 0x4C, 0x4F)
     await b.push(2, 0xAA << 24, 0x55 << 24)
     for d in (0x10, 0x20):
         drv.send(d)
     rx_u = await b.collect(1, 2, max_cycles=bc * 40)
-    rx_s = await b.collect(2, 2, max_cycles=4000)
-    rx_c = await b.collect(3, 2, max_cycles=4000)
+    rx_s = await b.collect(2, 2, max_cycles=20000)
+    rx_c = await b.collect(3, 2, max_cycles=20000)
     await b.wait_for(lambda: len(tx_mon.bytes) >= 2, max_cycles=bc * 30)
     assert tx_mon.bytes[:2] == [0x4C, 0x4F]
     assert [w >> 24 for w in rx_u] == [0x10, 0x20]

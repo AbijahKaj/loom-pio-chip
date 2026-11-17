@@ -6,6 +6,11 @@
  * The address auto-increments after each word, except for "port" addresses
  * (IMEM_DATA, engine TXF/RXF), so FIFOs can be streamed.
  *
+ * Quad-write mode (quad_en): the data phase of *write* transactions carries 4 bits
+ * per SCK rising edge on qio[3:0] (= {GPIO10, GPIO9, GPIO8, MOSI}), high nibble
+ * first. The command byte and all reads stay single-bit. This gives the host
+ * ~4x write bandwidth for streaming protocols (e.g. 10BASE-T at 10 Mb/s).
+ *
  * Reads peek the register at the start of each word and only commit a pop
  * (rd_pop) when the host actually starts clocking that word, so a trailing
  * read-ahead never loses FIFO data.
@@ -20,6 +25,8 @@ module loom_spi (
     input  wire        sck,      // already synchronised
     input  wire        cs_n,     // already synchronised
     input  wire        mosi,     // already synchronised
+    input  wire        quad_en,
+    input  wire [3:0]  qio,      // already synchronised; qio[0] == mosi
     output wire        miso,
     // register bus
     output reg  [6:0]  addr,     // current read address (combinational read mux)
@@ -43,7 +50,9 @@ module loom_spi (
 
   wire rise = sck & ~sck_d;
   wire fall = ~sck & sck_d;
-  wire [7:0] byte_in = {rx, mosi};
+  wire       qphase  = quad_en && have_cmd && !rw;
+  wire [7:0] byte_in = qphase ? {rx[3:0], qio} : {rx, mosi};
+  wire       byte_done = qphase ? (bitcnt == 3'd4) : (bitcnt == 3'd7);
 
   function is_port(input [6:0] a);
     is_port = (a == 7'h05) || ((a[6:4] != 3'd0) && ((a[3:0] == 4'h4) || (a[3:0] == 4'h5)));
@@ -85,9 +94,9 @@ module loom_spi (
       end else begin
         if (rise) begin
           rx     <= byte_in[6:0];
-          bitcnt <= bitcnt + 3'd1;
+          bitcnt <= qphase ? ((bitcnt == 3'd4) ? 3'd0 : 3'd4) : bitcnt + 3'd1;
           if (bitcnt == 3'd0 && have_cmd && rw && k == 2'd0 && rword_valid) rd_pop <= 1'b1;
-          if (bitcnt == 3'd7) begin
+          if (byte_done) begin
             if (!have_cmd) begin
               have_cmd <= 1'b1;
               rw       <= byte_in[7];
