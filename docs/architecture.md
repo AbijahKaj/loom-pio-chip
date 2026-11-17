@@ -60,7 +60,7 @@ write the same pin in a cycle, the highest-numbered engine wins, as on PIO.
 ### 2.2 Host interface
 
 The host is an SPI target (mode 0, oversampled; SCK ≤ clk/8, so 7.5 MHz at 60 MHz). The demo board's RP2350 is the
-intended host; see `host/loom.py`.
+intended host; see `host/loomhost.py`.
 
 A transaction is: `CS_N` low, a command byte `{rw, addr[6:0]}`, then 4 bytes per 32-bit word (little-endian, MSB-first
 within each byte). The address auto-increments after each word, except on the FIFO/IMEM "port" registers, so whole
@@ -165,7 +165,7 @@ CRC15, Ethernet CRC32, HDLC/X.25 CRC16, SMBus PEC and others.
 | `tools/loom/sim.py` | Cycle-exact golden model of the whole chip below the SPI layer |
 | `tools/loom/regs.py` | Register map and `EngineConfig` encoder (shared by tests and docs) |
 | `programs/*.loom` | 14 programs: `uart_tx`, `uart_rx`, `spi_cpha0`, `spi_cpha1` (modes 0–3 via `CPOL`), `spi_target`, `i2c_ctrl`, `usb_ls_tx`, `usb_ls_rx`, `eth10_tx`, `eth10_nlp`, `can_tx`, `ws2812`, `ps2_rx`, `pulse_capture` |
-| `host/loom.py` | MicroPython host driver for the RP2350 |
+| `host/loomhost.py` | MicroPython host driver for the RP2350 |
 
 ## 6. Implementation numbers
 
