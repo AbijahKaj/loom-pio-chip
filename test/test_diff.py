@@ -180,7 +180,7 @@ async def test_diff_random(dut):
         task = cocotb.start_soon(ls.run())
 
         n_prog = rng.randrange(4, 33)
-        words = rand_program(rng, n_prog) + rand_program(rng, 64)[n_prog:]
+        words = rand_program(rng, n_prog) + rand_program(rng, 32)[n_prog:]   # fill all 32 imem words
         await lm.write(R.IMEM_ADDR, 0)
         await lm.write(R.IMEM_DATA, *words)
         cfgs = [rand_config(rng, n_prog) for _ in range(4)]

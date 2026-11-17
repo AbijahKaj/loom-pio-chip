@@ -1,176 +1,191 @@
-# Loom — a programmable protocol engine ASIC
+# Loom: a programmable protocol engine ASIC
 
-**Status:** draft v0 spec (2026-11-17). Numbers marked *(est)* need to be confirmed by synthesis.
+Loom is an entry for the Jane Street × Tiny Tapeout protocol emulator competition. It targets
+IHP 130 nm CMOS5L, 8x4 tiles (~1.2 mm² die), and a 60 MHz clock.
 
-Loom is a protocol emulator for the Jane Street × Tiny Tapeout competition (IHP 130 nm CMOS5L, 8x4 tiles,
-target clock 60 MHz). It is a set of small, cycle-exact **bit engines**, inspired by the RP2040's PIO. Each engine
-has a set of **line helpers** that handle the parts of real-world protocols a PIO-style machine is bad at:
-bit-stuffing, NRZI, Manchester coding, CRCs, clock recovery and pulse-width timing. Those helpers are
-what let the same silicon run UART, SPI and I2C, and also reach low-speed USB, 10BASE-T, CAN and HDLC, all from firmware.
+The chip has four small, cycle-exact **bit engines** in the spirit of the RP2040's PIO. Each engine also has
+**line helpers**: generic hardware for the parts of real protocols that a plain shift-and-toggle machine handles
+badly. Those are bit-stuffing, NRZI and Manchester coding, CRCs, clock recovery, pulse timing and
+end-of-packet detection. With the helpers, the same silicon runs UART, SPI and I2C (controller and target), and
+also low-speed USB, 10BASE-T transmit, CAN, WS2812, PS/2 and pulse capture, all from firmware.
+
+See also [isa.md](isa.md) (instruction reference), [verification.md](verification.md) and
+[info.md](info.md) (Tiny Tapeout datasheet page).
 
 ## 1. Design goals
 
-1. **Flexibility first.** Nothing protocol-specific in hardware. Every helper is a generic, configurable
-   primitive (an LFSR, not "the USB CRC"), so it can serve protocols we never planned for.
-2. **Cycle-exact timing.** Every instruction takes exactly 1 cycle (plus a programmable delay) at the engine's
-   divided clock, so timing can be checked with pencil and paper.
-3. **Fits comfortably.** Target ≤ 60 % placement utilisation of 8x4 tiles, leaving room for CTS and routing.
-4. **Easy to verify.** A Python instruction-set simulator (ISS) is the golden model. The RTL is
-   differential-tested against it with random programs.
+1. **Flexibility first.** No protocol-specific hardware. Every helper is a generic, configurable primitive
+   (a programmable LFSR, not "the USB CRC"; a run-length stuffer, not "USB stuffing"), so it can serve protocols
+   that were never planned for.
+2. **Cycle-exact timing.** One instruction per engine tick (plus a programmable delay), so protocol timing can be
+   worked out on paper and is reproduced exactly by the Python model.
+3. **Simple programs.** The "repeat-without-consume" rule (§4.1) keeps every coded serial loop at one instruction
+   per line symbol. Helper events can redirect the program counter (traps), so packet boundaries need no polling.
+4. **Verifiable.** A cycle-exact Python model is the golden reference. The RTL is checked against it state by state.
 
 ## 2. Top level
 
 ```
-             ┌──────────────────────── tt_um_abijahkaj_loom ─────────────────────────┐
- SCK  ui[0] ─┤                                                                      │
- CS_N ui[1] ─┤  Host SPI    ──►  register file / imem write port / FIFO access      │
- MOSI ui[2] ─┤  target                                                              │
- MISO uo[0] ◄┤                                                                      │
-             │        ┌────────── shared instruction memory 64 × 16 ──────────┐     │
-             │        │      (4 read ports, 1 write port from host)          │     │
-             │   ┌────┴───┐ ┌────────┐ ┌────────┐ ┌────────┐                 │     │
-             │   │ Eng 0  │ │ Eng 1  │ │ Eng 2  │ │ Eng 3  │  ◄─ IRQ flags ──┘     │
-             │   │+helpers│ │+helpers│ │+helpers│ │+helpers│     (8 shared)        │
-             │   └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘                       │
-             │       └────── GPIO crossbar / OR-merge / open-drain ──────┐         │
-             └───────────────────────────────────────────────────────────┼─────────┘
-                                           20 GPIO: uio[7:0], ui[7:3], uo[7:1]
+                 ┌──────────────────────────── tt_um_abijahkaj_loom ─────────────────────────────┐
+  SCK   ui[0] ──►│                                                                               │
+  CS_N  ui[1] ──►│  2-FF sync ─► host SPI target ─► register bus ─► imem write, engine config,   │
+  MOSI  ui[2] ──►│               (quad-write mode)                  FIFOs, IRQ, GPIO, HOSTCFG    │
+  MISO  uo[0] ◄──│                                                                               │
+                 │        ┌───────────── instruction memory 32 × 16 (4 read ports) ──────────┐   │
+                 │   ┌────┴────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐                     │   │
+                 │   │ engine0 │  │ engine1 │  │ engine2 │  │ engine3 │ ◄── 8 shared IRQ flags   │
+                 │   │ +coder  │  │ +coder  │  │ +coder  │  │ +coder  │ ◄── 16-bit timestamp     │
+                 │   │ +CRC    │  │ +CRC    │  │ +CRC    │  │ +CRC    │                          │
+                 │   │ +events │  │ +events │  │ +events │  │ +events │                          │
+                 │   │ TX/RX   │  │ TX/RX   │  │ TX/RX   │  │ TX/RX   │                          │
+                 │   │ FIFOs   │  │ FIFOs   │  │ FIFOs   │  │ FIFOs   │                          │
+                 │   └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘                          │
+                 │        └── pin-write merge (higher engine wins) + open-drain ──┐              │
+                 └────────────────────────────────────────────────────────────────┼──────────────┘
+                                         20 GPIO: uio[7:0], ui[7:3], uo[7:1]
 ```
 
-### 2.1 Pin map
+### 2.1 Pins
 
-| GPIO # | Physical | Direction | Notes |
+| GPIO | Pad | Direction | Notes |
 |---|---|---|---|
-| 0–7 | `uio[0..7]` | bidirectional | per-pin OE, open-drain mode (I2C, 1-Wire, …) |
-| 8–12 | `ui[3..7]` | input only | 2-FF synchronised |
-| 13–19 | `uo[1..7]` | output only | |
-| — | `ui[0..2]`, `uo[0]` | host SPI | reserved |
+| 0–7 | `uio[0..7]` | bidirectional | Per-pin output enable (PINDIRS/OE) or open-drain mode (`OD` register: 0 drives low, 1 releases). Used for I2C and USB D+/D-. |
+| 8–12 | `ui[3..7]` | input | 2-FF synchronised. In quad-write mode, GPIO8–10 double as host data lines IO1–IO3. |
+| 13–19 | `uo[1..7]` | output | Always driven. Reading them returns the output register. |
+| — | `ui[0..2]`, `uo[0]` | host SPI | SCK, CS_N, MOSI, MISO |
 
-All inputs pass through a 2-flop synchroniser (2 cycles of latency, documented in the timing model).
-When several engines drive the same pin, their outputs are OR-merged, and OE/OD is the OR of the OEs.
+Every engine can read and write any GPIO, and pin bases wrap modulo 32 (pins 20–31 read as 0). When several engines
+write the same pin in a cycle, the highest-numbered engine wins, as on PIO.
 
 ### 2.2 Host interface
 
-SPI target, mode 0, oversampled by the system clock (SCK ≤ clk/6 ≈ 10 MHz). The demo board's RP2350 acts as the host.
+The host is an SPI target (mode 0, oversampled; SCK ≤ clk/8, so 7.5 MHz at 60 MHz). The demo board's RP2350 is the
+intended host; see `host/loom.py`.
 
-Transaction: `CS_N↓`, command byte `{rw, addr[6:0]}`, then N × 8-bit data bytes. Registers are 32 bits,
-little-endian, and the address auto-increments, except on FIFO addresses so streaming works.
+A transaction is: `CS_N` low, a command byte `{rw, addr[6:0]}`, then 4 bytes per 32-bit word (little-endian, MSB-first
+within each byte). The address auto-increments after each word, except on the FIFO/IMEM "port" registers, so whole
+streams go in one transaction.
 
-| Addr | Register | Notes |
-|---|---|---|
-| 0x00 | `ID` | `"LOOM"` + version |
-| 0x01 | `CTRL` | engine enable mask, per-engine restart, clock-divider resync |
-| 0x02 | `STATUS` | FIFO full/empty flags, IRQ flags |
-| 0x03 | `IMEM_ADDR` | write pointer for imem loading |
-| 0x04 | `IMEM_DATA` | write 16 bits, auto-increment pointer |
-| 0x08+4n.. | engine *n* `CLKDIV`, `PINCFG`, `EXECCFG`, `SHIFTCFG` | like PIO SMx_* registers |
-| 0x18+4n.. | engine *n* `TXF`, `RXF`, `CRCCFG`, `CODECFG` | FIFOs + helper config |
-| 0x30–0x33 | engine *n* `CRCPOLY` | 32-bit polynomial |
+- **Reads** peek a word when it starts and only *commit* a FIFO pop once the host clocks that word, so a trailing
+  read-ahead never loses data.
+- **Quad-write mode** (`HOSTCFG[0]`) moves write data on `{GPIO10, GPIO9, GPIO8, MOSI}`, 4 bits per clock (~30 Mb/s).
+  This is what makes full-rate 10BASE-T transmit possible.
 
-(The exact map gets frozen in week 2.)
+| Addr | Register | Access | Description |
+|---|---|---|---|
+| 0x00 | ID | R | `0x4C4F4F4D` ("LOOM") |
+| 0x01 | CTRL | RW | [3:0] engine enable; write-1 pulses: [7:4] restart, [11:8] FIFO clear, [15:12] clock-divider sync |
+| 0x02 | FLEVEL | R | engine n: [8n+2:8n] TX FIFO level, [8n+6:8n+4] RX FIFO level |
+| 0x03 | IMEM_ADDR | RW | instruction-memory write pointer |
+| 0x05 | IMEM_DATA | W | `imem[ptr++] = data[15:0]` |
+| 0x06 | IRQ | RW | read the flags; write: [7:0] clear, [15:8] set |
+| 0x07 | GPIO | RW | read the 20-bit input vector; write the GPIO output register |
+| 0x08 | OD | RW | open-drain enable for GPIO0–7 |
+| 0x09 | OE | RW | output enable for GPIO0–7 (non open-drain) |
+| 0x0A | HOSTCFG | RW | [0] quad-write mode |
+| 0x10·(n+1)+0 | CLKDIV | W | [31:16] integer, [15:8] fraction |
+| +1 | EXECCFG | W | [5:0] wrap_bottom, [11:6] wrap_top, [17:12] start, [20:18] sideset_count, [21] opt, [22] side→pindirs, [27:23] jmp_pin |
+| +2 | SHIFTCFG | W | [0] in_shift_right, [1] out_shift_right, [2] autopush, [3] autopull, [8:4] push_thresh, [13:9] pull_thresh (0 = 32) |
+| +3 | PINCFG | W | [4:0] out_base, [10:5] out_count, [15:11] set_base, [18:16] set_count, [23:19] side_base, [28:24] in_base |
+| +4 | TXF | W | push to the TX FIFO |
+| +5 | RXF | R | pop from the RX FIFO (0 if empty) |
+| +6 | CODECFG | W | [1:0] mode (0 none, 1 NRZI, 2 Manchester), [2] NRZI toggle-on value, [3] Manchester polarity, [4] stuff enable, [5] stuff mode, [9:6] stuff run length, [10] differential, [11] idle level, [16:12] ts_pin, [18:17] ts_edge (1 rise, 2 fall, 3 both), [19] DPLL |
+| +7 | CRCCFG | W | [5:0] width (0 = 32), [6] init all-ones, [12:7] skip count |
+| +8 | CRCPOLY | W | polynomial (MSB-first Galois form, implicit x^width) |
+| +9 | CRCVAL | W | set the CRC register (and re-load the skip count) |
+| +B/+C | PATMASK / PATVAL | W | 20-bit pin pattern for event 0 |
+| +D | TRAPCFG | W | [0] enable/arm, [3:1] event, [4] polarity, [10:5] address, [31:16] timeout (event 3) |
+| +E | DBG | R | {osr_cnt, flags, isr_cnt, delay, pc} |
+| +F | X | R | engine X register |
 
 ## 3. Bit engine
 
-Per-engine state: `PC[5:0]`, `X`, `Y` (32 b scratch), `OSR`, `ISR` (32 b shift registers, with shift counters),
-a 16.8 fractional clock divider, a delay counter, and a 4 × 32-bit TX FIFO and RX FIFO.
+Each engine holds:
 
-`EXECCFG` sets `wrap_top`/`wrap_bottom` (free loops), `jmp_pin`, and `sideset_count` (0–4) with optional enable.
-`SHIFTCFG` sets shift direction, autopush/autopull, and the thresholds.
+- **Execution state:** `PC`, scratch registers `X` and `Y` (32 bits), shift registers `OSR` and `ISR` (32 bits, with counters)
+- **Clocking:** a 16.8 fractional clock divider and a 4-bit delay counter
+- **FIFOs:** a 2-deep × 32-bit TX FIFO and RX FIFO
+- **Helpers:** coder, CRC, timestamp and trap state (§4)
 
-### 3.1 ISA (16-bit instructions)
+Execution, per tick:
 
-```
- 15  13 12     9 8                     0
-┌─────┬────────┬────────────────────────┐
-│ op  │ dly/ss │        operands        │   dly/ss: 4 bits split between side-set and delay
-└─────┴────────┴────────────────────────┘
-```
+1. If the trap is armed and its event is true, jump to the trap address.
+2. Otherwise, if a delay is pending, count it down.
+3. Otherwise, execute `imem[pc]`.
 
-| op | Mnemonic | Operands | Semantics |
-|---|---|---|---|
-| 0 | `JMP cond, addr` | cond[8:6], addr[5:0] | cond ∈ always, !X, X--, !Y, Y--, X≠Y, PIN, !OSRE |
-| 1 | `WAIT pol, src, idx` | pol[8], src[7:6], idx[5:0] | src ∈ GPIO, PIN (relative), IRQ, EVENT (helper events) |
-| 2 | `IN src, n` / `IN.c` | src[8:6], coded[5], n[4:0] | src ∈ PINS, X, Y, NULL, ISR, OSR, TSTAMP, CRC |
-| 3 | `OUT dst, n` / `OUT.c` | dst[8:6], coded[5], n[4:0] | dst ∈ PINS, X, Y, NULL, PINDIRS, PC, ISR, EXEC |
-| 4 | `PUSH`/`PULL` | dir[8], ifful/ifempty[7], block[6] | |
-| 5 | `MOV dst, op src` | dst[8:6], op[5:4], src[2:0] | op ∈ none, invert, bit-reverse |
-| 6 | `IRQ` | clr[8], wait[7], idx[2:0] | 8 shared flags for inter-engine sync |
-| 7 | `SET dst, imm` | dst[8:6], imm[5:0] | dst ∈ PINS, X, Y, PINDIRS, **HELPER** |
+A stalled instruction (blocking FIFO, `wait`, `irq wait`) has no effect except side-set. The formal checks
+prove this property (see [verification.md](verification.md)).
 
-`SET HELPER, imm` is the in-program control port for the helpers (reset CRC, arm or disarm the stuffer, clear the timestamp,
-resync the clock). Programs can therefore switch helper modes mid-packet, for example at a USB SYNC/EOP.
+**Area-motivated structure.** All pin writes go through one rotate unit, and `IN`/`OUT` share one 64→32 funnel
+shifter and one left shifter. Splitting these out per instruction cost about 80k µm² in the first synthesis.
 
-## 4. Line helpers (the differentiators)
+## 4. Line helpers
 
-All helpers sit on the **coded bit path**. They only affect `IN.c` / `OUT.c` (the coded bit set), so plain
-`IN`/`OUT` behaves exactly like PIO and the helpers can be ignored.
+All helpers sit on the **coded bit path** and only affect `in.c` / `out.c`. Plain `in` / `out` behave like PIO.
 
 ```
- TX:  OSR ──► CRC tap ──► bit-stuffer ──► NRZI / Manchester encoder ──► pin
- RX:  pin ──► NRZI / Manchester decoder ──► de-stuffer ──► CRC tap ──► ISR
+ TX:  OSR ─► CRC tap (after skip) ─► bit-stuffer ─► NRZI | Manchester ─► pin (+ complement on pin+1)
+ RX:  pin ─► NRZI | Manchester decode ─► de-stuffer (error flag) ─► CRC tap ─► ISR ─► autopush
 ```
 
-### 4.1 The "repeat-without-consume" rule
+### 4.1 Repeat-without-consume
 
-This is the core idea that keeps the engine simple. A coded op moves one *line symbol*. When the helper has to
-emit or swallow a symbol that carries no data, the instruction **re-executes without consuming or producing a data bit**:
+A coded op moves one line symbol per execution. A symbol that carries no data (a stuff bit, or the first half of a
+Manchester bit) makes the instruction **execute again without consuming or producing data**. Two consequences:
 
-* **Bit-stuffing TX:** after N identical bits, `OUT.c` emits the stuff bit and leaves the OSR alone. The program's
-  bit loop keeps its exact timing and needs no special case.
-* **Bit-stuffing RX:** `IN.c` on a stuffed bit discards it and leaves the ISR alone.
-* **Manchester:** each data bit is two half-bit symbols. The first `OUT.c` emits the first half and repeats.
-  The second emits the other half and consumes the bit.
+- One instruction per symbol keeps timing trivial. `out.c pins, x` streams an entire USB or Ethernet packet with
+  zero gaps: X counts the data bits, and autopull refills the OSR in the same cycle.
+- The op only completes when no stuff bit is owed. So a USB packet ending in six ones gets its final stuff bit,
+  and the receiver discards it, without any special code.
 
-Because one loop iteration always equals one line symbol, the timing analysis stays trivial.
+### 4.2 CRC / LFSR
 
-### 4.2 Configurable CRC/LFSR
+Each engine has a 32-bit Galois LFSR with programmable polynomial, width (1–32), init value (zero or all-ones;
+anything else via `mov crc, x`) and **skip count**. The skip count excludes the first N data bits after a reset,
+e.g. a USB PID.
 
-Each engine has a 32-bit Galois LFSR with a programmable polynomial, width (1–32), init value, reflect-in/out,
-and xor-out. It sees every *data* bit of coded ops: pre-stuff on TX, post-destuff on RX. `IN CRC, n` / `MOV x, CRC`
-reads it, and `WAIT EVENT CRC_OK` checks a residue match. This one block covers USB CRC5/CRC16, Ethernet CRC32,
-CAN CRC15, HDLC CRC16, SMBus PEC (CRC8), and others.
+Every coded data bit is fed through it. `in crc` / `mov … crc` read it (combine with `~` and `::` for inversion
+and reflection), and event 2 compares it with Y for residue checks. This one block covers USB CRC5/CRC16, CAN
+CRC15, Ethernet CRC32, HDLC/X.25 CRC16, SMBus PEC and others.
 
-### 4.3 Edge timestamps and clock recovery
+### 4.3 Timestamps, clock recovery, traps
 
-* A global 16-bit cycle counter. Each engine captures it on a configurable edge of a configurable pin.
-  `IN TSTAMP, n` returns the time since the previous edge. That enables auto-baud, pulse-width
-  protocols (WS2812 RX, IR remotes, 1-Wire timing, PWM capture) and logic-analyser-style capture.
-* **DPLL-lite:** when enabled, an edge on the recovery pin re-phases the engine's clock divider to
-  mid-bit. This keeps the sampling point centred for USB (±0.25 %) and Manchester RX without oversampling loops.
-
-### 4.4 Events
-
-`WAIT EVENT` sources: pin pattern match (mask/value over the 20 GPIOs), stuff error (USB EOP / HDLC abort
-detection), CRC residue OK, timestamp > threshold (timeouts, I2C clock stretch, idle detect).
+* A global 16-bit cycle counter. Each engine records the interval between edges on its `ts_pin` (rising, falling
+  or both); `in tstamp, 16` reads it. Used for pulse capture, IR decoding, 1-Wire timing and auto-baud. Event 3
+  (timeout) fires when no edge has arrived for `TIMEOUT` cycles.
+* **DPLL:** each edge re-phases the clock divider to mid-bit. The USB receiver uses it to sample correctly with a
+  1.5% clock error.
+* **Traps:** any event can redirect the PC, e.g. on USB SE0 (end of packet) or SPI CS release, with no polling loop.
 
 ## 5. Software
 
-* `tools/loomasm` — a Python assembler (PIO-like syntax, with `.side_set`, `.wrap`, `.define`, and helper
-  directives such as `.crc poly=0x8005 width=16 reflect`).
-* `tools/loomsim` — the Python ISS and golden model. The cocotb tests use it as the reference model.
-* `host/` — a MicroPython driver for the demo board's RP2350: load programs, configure engines, stream FIFOs.
-* `programs/` — `uart_tx`, `uart_rx`, `spi_ctrl` (modes 0–3), `spi_target`, `i2c_ctrl` (100/400 kHz, with clock stretch),
-  `i2c_target`, then stretch goals `usb_ls`, `eth10_tx`/`rx`, `can`, `ws2812`, `onewire`, `ps2`, `jtag`.
+| Path | Contents |
+|---|---|
+| `tools/loom/asm.py` | Assembler (PIO-flavoured syntax, `.side_set`, `.wrap`, `.define`, labels, expressions) |
+| `tools/loom/sim.py` | Cycle-exact golden model of the whole chip below the SPI layer |
+| `tools/loom/regs.py` | Register map and `EngineConfig` encoder (shared by tests and docs) |
+| `programs/*.loom` | 14 programs: `uart_tx`, `uart_rx`, `spi_cpha0`, `spi_cpha1` (modes 0–3 via `CPOL`), `spi_target`, `i2c_ctrl`, `usb_ls_tx`, `usb_ls_rx`, `eth10_tx`, `eth10_nlp`, `can_tx`, `ws2812`, `ps2_rx`, `pulse_capture` |
+| `host/loom.py` | MicroPython host driver for the RP2350 |
 
-## 6. Verification strategy
+## 6. Implementation numbers
 
-1. **Unit cocotb tests** per module (FIFO, divider, CRC, coder, host SPI).
-2. **Protocol tests:** each example program runs against an independent cocotb bus model (cocotbext-uart/spi/i2c,
-   or simple hand-written models) at several rates/modes.
-3. **Differential testing:** random instruction streams run on the RTL and on the ISS, comparing pins, FIFOs and registers every cycle.
-4. **Formal (SymbiYosys):** FIFO invariants, host-SPI framing, no X on outputs after reset, and the
-   repeat-without-consume invariant (no data-bit loss or duplication through the coder path).
-5. **Gate-level simulation** of the hardened netlist (the template's `GATES=yes` flow).
+The design is synthesised with LibreLane's `AREA 0` strategy. The default `DELAY 4` strategy inserted about 34k
+buffers on this design.
 
-## 7. Area budget *(est — to be replaced by real synthesis numbers)*
+| Item | Value |
+|---|---|
+| Std-cell area (Yosys/ABC, typ corner, pre-PnR) | ~459k µm² (~38% of the 8x4 core) |
+| Flip-flops | ~3.8k |
+| Instruction memory | 32 × 16 flops, 4 read ports (the ISA has 6-bit addresses; 64 entries fit the area but not the 3-layer routing budget) |
+| Clock target | 16 ns in the flow (62.5 MHz), operated at 60 MHz |
 
-| Block | Flops | Notes |
-|---|---|---|
-| imem 64×16 | 1024 | + 4 × 64:1 × 16 read muxes. Candidate to move into an IHP SRAM macro |
-| 4 × FIFOs (2 × 4 × 32) | 1024 | could shrink to 2-deep if area-tight |
-| 4 × engine regs (X, Y, OSR, ISR, PC, divider, …) | ~720 | |
-| 4 × CRC (LFSR + poly) | 256 | poly regs could be shared |
-| host IF, coders, timestamp, GPIO | ~300 | |
-| **total** | **~3.3 k** | ~25 % of 8x4 area *(est)* |
+The first full PnR attempts (64-entry imem, density 60%) placed and closed timing at 20 ns with +6.8 ns slack after
+CTS. Global routing then overflowed on Metal3, which led to the 32-entry memory and the density/derating changes.
+Final numbers are in the hardening summary of the submission.
 
-The first real synthesis run in week 2 decides FIFO depth, imem size, and whether to use flops or SRAM.
+## 7. Known limitations
+
+* The host link (≤7.5 MHz single, ~30 Mb/s quad-write) bounds sustained streaming. 10BASE-T transmit needs paced
+  quad writes. 10BASE-T *receive* at 60 MHz (3 clocks per half-bit, behind a 2-FF synchroniser) is not claimed.
+* FIFOs are 2 deep. Fast receive protocols should use autopush at 32 bits so the host has time to drain.
+* SPI target mode supports SCK up to about f_clk/24 (synchroniser plus instruction latency).

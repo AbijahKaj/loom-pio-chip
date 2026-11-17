@@ -600,9 +600,10 @@ class Engine:
 class Chip:
     """Whole-chip model below the SPI layer."""
 
-    def __init__(self, n_engines=4, fifo_depth=2):
+    def __init__(self, n_engines=4, fifo_depth=2, imem_depth=32):
         self.eng = [Engine(i, fifo_depth) for i in range(n_engines)]
-        self.imem = [0] * 64
+        self.imem_depth = imem_depth
+        self.imem = [0] * imem_depth
         self.en = 0
         self.restart = self.fifo_clr = self.div_sync = 0
         self.imem_ptr = 0
@@ -656,7 +657,7 @@ class Chip:
         combs = []
         for i, e in enumerate(self.eng):
             en = (self.en >> i) & 1 and not (self.restart >> i) & 1
-            instr = self.imem[e.s["pc"]]
+            instr = self.imem[e.s["pc"] % self.imem_depth]
             combs.append(e.comb(en, instr, gpio_in, self.irq, self.ts))
 
         # top-level merges
@@ -685,7 +686,7 @@ class Chip:
 
         # top sequential
         if glob and wr[0] == R.IMEM_DATA:
-            self.imem[self.imem_ptr] = wr[1] & 0xFFFF
+            self.imem[self.imem_ptr % self.imem_depth] = wr[1] & 0xFFFF
         self.ts = (self.ts + 1) & 0xFFFF
         self.irq = irq & 0xFF
         self.gpio_out = gout & 0xFFFFF

@@ -26,6 +26,9 @@ from . import isa
 from .regs import EVENT_NAMES, EngineConfig
 
 
+IMEM_DEPTH = 32   # instruction memory entries on the TTIHP 8x4 build
+
+
 class AsmError(Exception):
     pass
 
@@ -174,6 +177,9 @@ def assemble(text: str, defines: Optional[Dict[str, int]] = None) -> Program:
 
     if pc > 64:
         raise AsmError(f"program too long ({pc} > 64)")
+    if pc > IMEM_DEPTH:
+        import warnings
+        warnings.warn(f"{name}: {pc} instructions exceed this chip's {IMEM_DEPTH}-entry memory")
     ctx = _Ctx(defines, labels)
     code = []
     src = []

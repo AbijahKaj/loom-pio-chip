@@ -16,6 +16,9 @@ module tt_um_abijahkaj_loom (
     input  wire       rst_n
 );
   localparam [31:0] LOOM_ID = 32'h4C4F_4F4D;  // "LOOM"
+  // Instruction memory depth = 2**IMEM_AW. The ISA has 6-bit addresses (up to 64); this
+  // shuttle uses 32 entries (like the RP2040 PIO) to keep routing demand within 3 metal layers.
+  localparam IMEM_AW = 5;
 
   // ------------------------------------------------------------ input synchronisers
   reg [7:0] ui_s1, ui_s2, uio_s1, uio_s2;
@@ -54,7 +57,7 @@ module tt_um_abijahkaj_loom (
   reg  [7:0]  gpio_oe;
   reg  [7:0]  od;
   reg  [15:0] ts;
-  reg  [15:0] imem[0:63];
+  reg  [15:0] imem[0:(1<<IMEM_AW)-1];
 
   wire glob_wr = h_wr && (h_wr_addr[6:4] == 3'd0);
 
@@ -78,7 +81,7 @@ module tt_um_abijahkaj_loom (
           .rxf_head(rxf_head[g]), .rxf_empty(rxf_empty[g]),
           .rxf_level(rxf_level[g]), .txf_level(txf_level[g]),
           .dbg(dbg[g]), .dbg_x(dbg_x[g]),
-          .pc_o(pc[g]), .instr(imem[pc[g]]),
+          .pc_o(pc[g]), .instr(imem[pc[g][IMEM_AW-1:0]]),
           .gpio_in(gpio_in),
           .po_mask(po_mask[g]), .po_val(po_val[g]), .pd_mask(pd_mask[g]), .pd_val(pd_val[g]),
           .irq_flags(irq), .irq_set(irq_set[g]), .irq_clr(irq_clr[g]),
@@ -147,7 +150,7 @@ module tt_um_abijahkaj_loom (
 
   // instruction memory: plain flops, no reset (loaded by the host before enabling)
   always @(posedge clk) begin
-    if (glob_wr && h_wr_addr[3:0] == 4'h5) imem[imem_ptr] <= h_wdata[15:0];
+    if (glob_wr && h_wr_addr[3:0] == 4'h5) imem[imem_ptr[IMEM_AW-1:0]] <= h_wdata[15:0];
   end
 
   // ------------------------------------------------------------ host read mux
