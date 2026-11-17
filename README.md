@@ -1,42 +1,51 @@
-![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
+# Loom: a programmable protocol engine for Tiny Tapeout
 
-# Tiny Tapeout Verilog Project Template
+Loom is a small ASIC (IHP 130 nm CMOS5L, 8x4 Tiny Tapeout tiles, 60 MHz) that speaks hardware protocols defined in
+**firmware**. It has four cycle-exact bit engines, in the spirit of the RP2040's PIO. Each engine has generic **line
+helpers**: bit-stuffing, NRZI and Manchester coding, a programmable CRC, edge timestamps, DPLL clock recovery, and
+pattern events that can trap the program counter. Together they let the same silicon run:
 
-- [Read the documentation for project](docs/info.md)
+| Protocol | Program | Verified on RTL (real SPI host) |
+|---|---|---|
+| UART TX/RX (framing-error IRQ) | `uart_tx`, `uart_rx` | ✔ |
+| SPI controller, modes 0/1/2/3 | `spi_cpha0`, `spi_cpha1` | ✔ |
+| SPI target (CS-abort via trap) | `spi_target` | ✔ |
+| I2C controller (repeated start, NACK, clock stretching) | `i2c_ctrl` | ✔ |
+| Low-speed USB TX (NRZI + stuffing + EOP) | `usb_ls_tx` | ✔ |
+| Low-speed USB RX (DPLL, de-stuffing, CRC16 residue check, ±1.5 % clock) | `usb_ls_rx` | ✔ |
+| 10BASE-T TX at full rate (Manchester, quad-SPI host feed) | `eth10_tx`, `eth10_nlp` | ✔ (TX) |
+| CAN 2.0 TX (CAN-style stuffing) | `can_tx` | ✔ |
+| WS2812, PS/2 RX, pulse/interval capture | `ws2812`, `ps2_rx`, `pulse_capture` | ✔ |
+| Four protocols concurrently | — | ✔ |
 
-## What is Tiny Tapeout?
+## Documentation
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+* [docs/architecture.md](docs/architecture.md): design, pins, register map, line helpers, area
+* [docs/isa.md](docs/isa.md): instruction set reference
+* [docs/verification.md](docs/verification.md): lockstep golden-model testing, protocol models, formal, gate level, bug log
+* [docs/hardening.md](docs/hardening.md): flow settings and PnR history
+* [docs/info.md](docs/info.md): Tiny Tapeout datasheet page
 
-To learn more and get started, visit https://tinytapeout.com.
+## Layout
 
-## Set up your Verilog project
+```
+src/            RTL: project.v (top), loom_engine.v, loom_spi.v, loom_fifo.v, config.json
+programs/       Loom assembly programs (*.loom)
+tools/loom/     assembler, cycle-exact ISS (golden model), register map, export tool
+host/           MicroPython host driver for the RP2350 (loomhost.py)
+test/           cocotb tests, device models, protocol scenarios, ISS runner
+formal/         Yosys formal checks (FIFO induction proof, engine BMC)
+synth/          area estimate, gate-level netlist, hardening scripts
+```
 
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
+## Quick start
 
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
+```sh
+python3 -m venv .venv && .venv/bin/pip install -r test/requirements.txt   # Python <= 3.13 for cocotb 2.0.1
+python3 test/run_iss.py                       # all protocol scenarios on the ISS (seconds)
+cd test && make -B NODUMP=1 COCOTB_TEST_MODULES=test,test_protocols,test_diff,test_host   # RTL
+formal/run.sh                                 # formal checks
+synth/area.sh                                 # area estimate with the IHP liberty
+```
 
-## Enable GitHub actions to build the results page
-
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
-
-## Resources
-
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
-
-## What next?
-
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+Assemble a program: `tools/loomasm programs/uart_tx.loom` (listing) or `tools/loomasm programs/uart_tx.loom --hex`.

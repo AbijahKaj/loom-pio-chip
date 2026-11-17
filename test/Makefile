@@ -8,7 +8,16 @@ TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
 PROJECT_SOURCES = project.v loom_engine.v loom_fifo.v loom_spi.v
 
-ifneq ($(GATES),yes)
+ifeq ($(GATES),synth)
+
+# Post-synthesis gate-level simulation (synth/gl_netlist.sh), IHP cell models from IHP_CELLS
+SIM_BUILD				= sim_build/gls
+IHP_CELLS ?= $(PWD)/../../pdk
+COMPILE_ARGS    += -DGL_TEST -DFUNCTIONAL -DSIM
+VERILOG_SOURCES += $(IHP_CELLS)/sg13cmos5l_udp.v $(IHP_CELLS)/sg13cmos5l_stdcell.v
+VERILOG_SOURCES += $(PWD)/../build/loom_gl.v
+
+else ifneq ($(GATES),yes)
 
 # RTL simulation:
 SIM_BUILD				= sim_build/rtl

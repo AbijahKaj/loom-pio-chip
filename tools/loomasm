@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Loom assembler CLI.  usage: tools/loomasm prog.loom [-D NAME=VAL ...] [--hex | --listing] [--origin N]"""
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from loom.asm import AsmError, assemble_file  # noqa: E402
+
+ap = argparse.ArgumentParser()
+ap.add_argument("file")
+ap.add_argument("-D", action="append", default=[], help="NAME=VALUE (overrides .define)")
+ap.add_argument("--origin", type=lambda x: int(x, 0), default=0)
+ap.add_argument("--hex", action="store_true", help="one 16-bit word per line (relocated)")
+a = ap.parse_args()
+defs = {k: int(v, 0) for k, v in (d.split("=") for d in a.D)}
+try:
+    p = assemble_file(a.file, defs)
+except AsmError as e:
+    sys.exit(f"{a.file}: {e}")
+if a.hex:
+    print("\n".join(f"{w:04x}" for w in p.relocated(a.origin)))
+else:
+    print(f"; {p.name}: {len(p)} instructions, wrap {p.wrap_target}..{p.wrap}, "
+          f"side-set {p.sideset_count}{' opt' if p.sideset_opt else ''}")
+    print(p.listing())

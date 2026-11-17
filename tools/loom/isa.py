@@ -80,9 +80,9 @@ def disasm(word: int, sideset_count=0, sideset_opt=False) -> str:
     elif op == OP_WAIT:
         s = f"wait {arg >> 8} {inv(WAIT_SRC)[(arg >> 6) & 3]} {arg & 63}"
     elif op == OP_IN:
-        s = f"in{'.c' if arg & 32 else ''} {inv(IN_SRC)[hi]}, {arg & 31 or 32}"
+        s = f"in{'.c' if arg & 32 else ''} {inv(IN_SRC)[hi]}, {arg & 31 or ('x' if arg & 32 else 32)}"
     elif op == OP_OUT:
-        s = f"out{'.c' if arg & 32 else ''} {inv(OUT_DST).get(hi, 'rsvd')}, {arg & 31 or 32}"
+        s = f"out{'.c' if arg & 32 else ''} {inv(OUT_DST).get(hi, 'rsvd')}, {arg & 31 or ('x' if arg & 32 else 32)}"
     elif op == OP_PUSHPULL:
         if arg >> 8:
             s = "pull" + (" ifempty" if arg & 128 else "") + (" block" if arg & 64 else " noblock")
