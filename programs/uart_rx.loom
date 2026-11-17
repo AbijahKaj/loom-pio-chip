@@ -1,0 +1,20 @@
+; 8N1 UART receiver (LSB first).
+; in_base = jmp_pin = RX pin. 8 ticks per bit: clkdiv = f_clk / (8 * baud).
+; in_shift_right = 1: each received byte lands in bits [31:24] of an RX FIFO word.
+; A framing error (stop bit low) sets IRQ flag 4 (relative to the engine) and
+; resynchronises on the next idle period.
+.program uart_rx
+.wrap_target
+start:
+    wait 0 pin 0            ; start bit edge
+    set x, 7        [10]    ; 1 + 10 + 1 ticks = 1.5 bits -> middle of data bit 0
+bitloop:
+    in pins, 1
+    jmp x--, bitloop [6]    ; 8 ticks per bit
+    jmp pin, good_stop      ; sample stop bit
+    irq set 4 rel           ; framing error
+    wait 1 pin 0
+    jmp start
+good_stop:
+    push block
+.wrap

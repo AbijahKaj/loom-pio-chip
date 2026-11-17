@@ -28,7 +28,7 @@ REQUIRED_COV = ["op0", "op1", "op1_stall", "op2", "op2_stall", "op3", "op3_stall
 
 ENGINE_SIGS = ["pc", "x", "y", "osr", "isr", "osr_cnt", "isr_cnt", "delay_cnt", "irq_wait", "cb_active",
                "cb_left", "div_cnt", "div_acc", "stuff_on", "run", "last_bit", "tx_lvl", "rx_lvl", "mph",
-               "stuff_err", "crc", "last_ts", "delta_ts", "edge_flag", "trap_armed"]
+               "stuff_err", "crc", "crc_skip", "last_ts", "delta_ts", "edge_flag", "trap_armed"]
 
 
 class Lockstep:
@@ -97,6 +97,8 @@ def rand_program(rng, n):
             arg = (arg & ~63) | rng.randrange(n)          # stay inside the program
         if op in (2, 3) and rng.random() < 0.5:
             arg = (arg & 0x1F) | (1 << 5) | (rng.choice([0, 0, 3]) << 6)   # coded serial ops
+            if rng.random() < 0.3:
+                arg &= ~0x1F                              # X-counted
         if op == 4 and rng.random() < 0.6:
             arg &= ~(1 << 6)                              # non-blocking push/pull
         if op == 1:
@@ -143,6 +145,7 @@ def rand_config(rng, n_prog):
     c.dpll = rng.random() < 0.3
     c.crc_width = rng.randrange(0, 34)
     c.crc_init_ones = rng.random() < 0.5
+    c.crc_skip = rng.choice([0, 0, 1, 3, 8])
     c.crc_poly = rng.getrandbits(32)
     c.pat_mask = rng.getrandbits(20)
     c.pat_val = rng.getrandbits(20)

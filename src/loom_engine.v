@@ -69,6 +69,7 @@ module loom_engine #(
   reg [1:0]  ts_edge;
   reg        dpll_en;
   reg [5:0]  crc_width;
+  reg [5:0]  crc_skip_cfg;
   reg        crc_init1;
   reg [31:0] crc_poly;
   reg [19:0] pat_mask, pat_val;
@@ -93,6 +94,7 @@ module loom_engine #(
   reg        tx_lvl, rx_lvl, mph;
   reg        stuff_err;
   reg [31:0] crc;
+  reg [5:0]  crc_skip;
   reg        ts_prev;
   reg [15:0] last_ts, delta_ts;
   reg        edge_flag;
@@ -178,6 +180,14 @@ module loom_engine #(
 
   wire [5:0] n6 = (arg[4:0] == 5'd0) ? 6'd32 : {1'b0, arg[4:0]};
 
+  // coded ops: n == 0 selects X-counted mode (each data bit decrements X; done when X reaches 0)
+  wire        xmode     = (arg[4:0] == 5'd0);
+  wire [31:0] x_dec     = x - 32'd1;
+  wire [5:0]  cb_cur    = cb_active ? cb_left : n6;
+  wire        cnt_last  = xmode ? (x == 32'd1) : (cb_cur == 6'd1);
+  wire        cnt_zero  = xmode ? (x == 32'd0) : (cb_cur == 6'd0);
+  wire        stuff_now = stuff_on && (c_stuff_n != 4'd0) && (run == c_stuff_n);
+
   wire exec = tick && !trap_fire && (delay_cnt == 4'd0);
 
   // ---------------------------------------------------------------- shared datapath
@@ -247,6 +257,8 @@ module loom_engine #(
   reg        need_stuff, stuff_bit, lbit, sym, sym_done, dbit, s_in;
   reg [2:0]  irq_idx;
   reg [3:0]  run_inc;
+  reg [5:0]  cnt_left;
+  reg [5:0]  nx_crc_skip;
 
   always @(*) begin
     nx_pc        = pc;
@@ -268,6 +280,7 @@ module loom_engine #(
     nx_mph       = mph;
     nx_stuff_err = stuff_err;
     nx_crc       = crc;
+    nx_crc_skip  = crc_skip;
     nx_trap_armed = trap_armed;
     nx_edge_flag = edge_flag | ts_edge_ev;
 
@@ -319,8 +332,8 @@ module loom_engine #(
         end
         // ------------------------------------------------ IN
         3'd2: begin
-          if (coded && f_hi == 3'd0) begin
-            // coded serial receive: one line symbol per execution
+          if (coded && (f_hi == 3'd0 || f_hi == 3'd3)) begin
+            // coded serial receive (PINS) or decode-and-discard (NULL): one line symbol per execution
             s_in = pins_in[0];
             sym_done = 1'b1;
             case (c_mode)
@@ -331,25 +344,30 @@ module loom_engine #(
               end
               default: lbit = s_in;
             endcase
-            nx_cb_left = cb_active ? cb_left : n6;
+            cnt_left = cb_cur;
+            nx_cb_left = cnt_left;
             rpt = 1'b1;
             if (sym_done) begin
-              if (stuff_on && c_stuff_n != 4'd0 && run == c_stuff_n) begin
+              if (stuff_now) begin
                 // stuffed bit: check and discard
                 if (lbit != (c_stuff_mode ? ~last_bit : 1'b0)) nx_stuff_err = 1'b1;
                 nx_run  = c_stuff_mode ? 4'd1 : 4'd0;
                 nx_last = lbit;
+                if (cnt_zero) rpt = 1'b0;
               end else begin
-                new_isr  = in_shr ? {lbit, isr[31:1]} : {isr[30:0], lbit};
-                cnt_sum  = sat_add(isr_cnt, 6'd1);
-                crc_step = 1'b1;
-                crc_bit  = lbit;
                 if (c_stuff_mode) nx_run = (lbit == last_bit) ? run_inc : 4'd1;
                 else nx_run = lbit ? run_inc : 4'd0;
-                nx_last    = lbit;
-                nx_cb_left = nx_cb_left - 6'd1;
-                if (nx_cb_left == 6'd0) rpt = 1'b0;
-                do_push = 1'b1;
+                nx_last = lbit;
+                if (xmode) nx_x = x_dec;
+                else nx_cb_left = cnt_left - 6'd1;
+                if (cnt_last && !(stuff_on && c_stuff_n != 4'd0 && nx_run == c_stuff_n)) rpt = 1'b0;
+                if (f_hi == 3'd0) begin
+                  new_isr  = in_shr ? {lbit, isr[31:1]} : {isr[30:0], lbit};
+                  cnt_sum  = sat_add(isr_cnt, 6'd1);
+                  crc_step = 1'b1;
+                  crc_bit  = lbit;
+                  do_push  = 1'b1;
+                end
               end
             end
             nx_cb_active = rpt;
@@ -380,11 +398,12 @@ module loom_engine #(
           if (coded && (f_hi == 3'd0 || f_hi == 3'd3)) begin
             // coded serial transmit (PINS) or CRC feed (NULL): one symbol per execution
             dbit = out_shr ? osr_e[0] : osr_e[31];
-            nx_cb_left = cb_active ? cb_left : n6;
+            cnt_left = cb_cur;
+            nx_cb_left = cnt_left;
             rpt = 1'b1;
             sym_done = 1'b1;
             if (f_hi == 3'd0) begin
-              need_stuff = stuff_on && (c_stuff_n != 4'd0) && (run == c_stuff_n);
+              need_stuff = stuff_now;
               stuff_bit  = c_stuff_mode ? ~last_bit : 1'b0;
               lbit       = need_stuff ? stuff_bit : dbit;
               case (c_mode)
@@ -401,6 +420,7 @@ module loom_engine #(
               if (need_stuff) begin
                 nx_run  = c_stuff_mode ? 4'd1 : 4'd0;
                 nx_last = stuff_bit;
+                if (cnt_zero) rpt = 1'b0;
               end else begin
                 nx_osr     = out_shr ? {1'b0, osr_e[31:1]} : {osr_e[30:0], 1'b0};
                 nx_osr_cnt = sat_add(osr_cnt_e, 6'd1);
@@ -411,8 +431,9 @@ module loom_engine #(
                   else nx_run = dbit ? run_inc : 4'd0;
                   nx_last = dbit;
                 end
-                nx_cb_left = nx_cb_left - 6'd1;
-                if (nx_cb_left == 6'd0) rpt = 1'b0;
+                if (xmode) nx_x = x_dec;
+                else nx_cb_left = cnt_left - 6'd1;
+                if (cnt_last && !(f_hi == 3'd0 && stuff_on && c_stuff_n != 4'd0 && nx_run == c_stuff_n)) rpt = 1'b0;
               end
             end
             nx_cb_active = rpt;
@@ -491,7 +512,7 @@ module loom_engine #(
             3'd1: nx_x = {26'd0, arg[5:0]};
             3'd2: nx_y = {26'd0, arg[5:0]};
             3'd3: begin
-              if (arg[0]) nx_crc = crc_init1 ? crc_wmask : 32'd0;
+              if (arg[0]) begin nx_crc = crc_init1 ? crc_wmask : 32'd0; nx_crc_skip = crc_skip_cfg; end
               if (arg[1]) begin
                 nx_run = 4'd0; nx_last = 1'b0; nx_mph = 1'b0;
                 nx_tx_lvl = c_idle; nx_rx_lvl = c_idle;
@@ -507,13 +528,15 @@ module loom_engine #(
         end
       endcase
 
-      if (crc_step)
-        nx_crc = ((crc << 1) & crc_wmask) ^ ((crc_bit ^ crc_msb) ? (crc_poly & crc_wmask) : 32'd0);
+      if (crc_step) begin
+        if (crc_skip != 6'd0) nx_crc_skip = crc_skip - 6'd1;
+        else nx_crc = ((crc << 1) & crc_wmask) ^ ((crc_bit ^ crc_msb) ? (crc_poly & crc_wmask) : 32'd0);
+      end
 
       if (stall) begin
         // a stalled instruction has no effect except side-set and IRQ-wait bookkeeping
         nx_x = x; nx_y = y; nx_osr = osr; nx_isr = isr;
-        nx_osr_cnt = osr_cnt; nx_isr_cnt = isr_cnt; nx_crc = crc;
+        nx_osr_cnt = osr_cnt; nx_isr_cnt = isr_cnt; nx_crc = crc; nx_crc_skip = crc_skip;
         nx_cb_active = cb_active; nx_cb_left = cb_left;
         nx_run = run; nx_last = last_bit; nx_tx_lvl = tx_lvl; nx_rx_lvl = rx_lvl; nx_mph = mph;
         nx_stuff_err = stuff_err;
@@ -555,7 +578,7 @@ module loom_engine #(
       c_mode <= 2'd0; c_nrzi_tog <= 1'b0; c_manch_pol <= 1'b0; c_stuff_en <= 1'b0; c_stuff_mode <= 1'b0;
       c_stuff_n <= 4'd0; c_diff <= 1'b0; c_idle <= 1'b0;
       ts_pin <= 5'd0; ts_edge <= 2'd0; dpll_en <= 1'b0;
-      crc_width <= 6'd0; crc_init1 <= 1'b0; crc_poly <= 32'd0;
+      crc_width <= 6'd0; crc_skip_cfg <= 6'd0; crc_init1 <= 1'b0; crc_poly <= 32'd0;
       pat_mask <= 20'd0; pat_val <= 20'd0;
       trap_en <= 1'b0; trap_pol <= 1'b0; trap_ev <= 3'd0; trap_addr <= 6'd0; timeout <= 16'd0;
 
@@ -565,7 +588,7 @@ module loom_engine #(
       div_cnt <= 16'd0; div_acc <= 8'd0;
       stuff_on <= 1'b0; run <= 4'd0; last_bit <= 1'b0;
       tx_lvl <= 1'b0; rx_lvl <= 1'b0; mph <= 1'b0; stuff_err <= 1'b0;
-      crc <= 32'd0;
+      crc <= 32'd0; crc_skip <= 6'd0;
       ts_prev <= 1'b0; last_ts <= 16'd0; delta_ts <= 16'd0; edge_flag <= 1'b0;
       trap_armed <= 1'b0;
     end else begin
@@ -575,7 +598,7 @@ module loom_engine #(
       irq_wait <= nx_irq_wait; cb_active <= nx_cb_active; cb_left <= nx_cb_left;
       stuff_on <= nx_stuff_on; run <= nx_run; last_bit <= nx_last;
       tx_lvl <= nx_tx_lvl; rx_lvl <= nx_rx_lvl; mph <= nx_mph; stuff_err <= nx_stuff_err;
-      crc <= nx_crc; trap_armed <= nx_trap_armed; edge_flag <= nx_edge_flag;
+      crc <= nx_crc; crc_skip <= nx_crc_skip; trap_armed <= nx_trap_armed; edge_flag <= nx_edge_flag;
 
       // ---- timestamps (always running)
       ts_prev <= ts_pin_v;
@@ -625,9 +648,9 @@ module loom_engine #(
             tx_lvl <= cfg_wdata[11]; rx_lvl <= cfg_wdata[11];
             ts_pin <= cfg_wdata[16:12]; ts_edge <= cfg_wdata[18:17]; dpll_en <= cfg_wdata[19];
           end
-          4'h7: begin crc_width <= cfg_wdata[5:0]; crc_init1 <= cfg_wdata[6]; end
+          4'h7: begin crc_width <= cfg_wdata[5:0]; crc_init1 <= cfg_wdata[6]; crc_skip_cfg <= cfg_wdata[12:7]; end
           4'h8: crc_poly <= cfg_wdata;
-          4'h9: crc <= cfg_wdata;
+          4'h9: begin crc <= cfg_wdata; crc_skip <= crc_skip_cfg; end
           4'hB: pat_mask <= cfg_wdata[19:0];
           4'hC: pat_val <= cfg_wdata[19:0];
           4'hD: begin

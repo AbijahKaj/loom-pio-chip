@@ -1,0 +1,14 @@
+; PS/2 device-to-host receiver (keyboard / mouse). Data is valid on falling CLK edges.
+; in_base = DATA; CLK given as a GPIO number. in_shift_right = 1, no autopush:
+; each frame (start, 8 data, parity, stop) is pushed as bits [31:21].
+.program ps2_rx
+.define CLK 9
+.wrap_target
+    set x, 10
+bit:
+    wait 0 gpio CLK
+    in pins, 1
+    wait 1 gpio CLK
+    jmp x--, bit
+    push block
+.wrap

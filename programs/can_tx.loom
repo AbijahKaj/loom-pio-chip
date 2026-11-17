@@ -1,0 +1,16 @@
+; CAN 2.0 frame transmitter (no arbitration loss handling: single node / demo).
+; Bit stuffing in CAN mode: after 5 equal bits insert the complement (stuff_mode 1, n 5).
+; out_base = set_base = TX (count 1); one tick per bit: clkdiv = f_clk / bitrate.
+; out_shift_right = 0 (MSB first), autopull threshold 32, idle level 1 (recessive).
+; Host pushes: N = bits from SOF to the end of the CRC field (stuffed region), then the
+; bits MSB first. The program appends CRC delimiter, ACK slot, ACK delimiter, EOF and
+; intermission (all recessive, unstuffed).
+.program can_tx
+.wrap_target
+    pull block
+    mov x, osr
+    out null, 32
+    helper coder stuff_on
+    out.c pins, 0            ; SOF .. CRC, with CAN bit stuffing (incl. a trailing stuff bit)
+    set pins, 1      [12]    ; 13 recessive bits: CRC delim, ACK, ACK delim, EOF(7), IFS(3)
+.wrap

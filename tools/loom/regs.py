@@ -87,6 +87,7 @@ class EngineConfig:
     crc_width: int = 32
     crc_init_ones: bool = False
     crc_poly: int = 0
+    crc_skip: int = 0            # data bits excluded from the CRC after each CRC reset
     # events / traps
     pat_mask: int = 0
     pat_val: int = 0
@@ -117,7 +118,7 @@ class EngineConfig:
             | int(self.stuff_en) << 4 | (self.stuff_mode & 1) << 5 | (self.stuff_n & 15) << 6 \
             | int(self.diff) << 10 | (self.idle_level & 1) << 11 | (self.ts_pin & 31) << 12 \
             | (self.ts_edge & 3) << 17 | int(self.dpll) << 19
-        r[CRCCFG] = (self.crc_width & 63) | int(self.crc_init_ones) << 6
+        r[CRCCFG] = (self.crc_width & 63) | int(self.crc_init_ones) << 6 | (self.crc_skip & 63) << 7
         r[CRCPOLY] = self.crc_poly & 0xFFFFFFFF
         r[PATMASK] = self.pat_mask & 0xFFFFF
         r[PATVAL] = self.pat_val & 0xFFFFF

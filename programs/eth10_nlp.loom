@@ -1,0 +1,14 @@
+; 10BASE-T normal link pulses: a 100 ns pulse every 16 ms.
+; out pins = set_base = TD+ (diff pair not needed: set_count 2 with TD+, TD-).
+; clkdiv = f_clk / 20 MHz (one tick = 50 ns); the 16 ms gap uses Y as a counter
+; (loaded by the host through the TX FIFO once: 16 ms / (16 * 50 ns) = 20000).
+.program eth10_nlp
+    pull block
+    mov y, osr
+.wrap_target
+    set pins, 1      [1]     ; 100 ns pulse
+    set pins, 0
+    mov x, y
+wait_loop:
+    jmp x--, wait_loop [15]
+.wrap

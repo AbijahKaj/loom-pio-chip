@@ -117,6 +117,7 @@ def _strip_comment(line: str) -> str:
 
 def assemble(text: str, defines: Optional[Dict[str, int]] = None) -> Program:
     defines = dict(defines or {})
+    external = set(defines)          # externally supplied defines override .define defaults
     lines = text.splitlines()
     name = "program"
     ss_count, ss_opt, ss_pindirs = 0, False, False
@@ -157,7 +158,8 @@ def assemble(text: str, defines: Optional[Dict[str, int]] = None) -> Program:
                 rest = parts[1:]
                 if rest and rest[0].upper() == "PUBLIC":
                     rest = rest[1:]
-                defines[rest[0]] = _Ctx(defines, {}).val(" ".join(rest[1:]), lineno)
+                if rest[0] not in external:
+                    defines[rest[0]] = _Ctx(defines, {}).val(" ".join(rest[1:]), lineno)
             elif d == ".wrap_target":
                 wrap_target = pc
             elif d == ".wrap":
@@ -261,19 +263,25 @@ def _encode(line: str, ctx: _Ctx, lineno: int):
         a = _args(rest)
         if len(a) != 2 or a[0].lower() not in isa.IN_SRC:
             raise err("bad in")
-        n = ctx.val(a[1], lineno)
-        if not 1 <= n <= 32:
+        coded = mnem == "in.c"
+        n = 0 if (coded and a[1].lower() == "x") else ctx.val(a[1], lineno)
+        if coded and not 0 <= n <= 31:
+            raise err("coded bit count must be 1..31, or 0 / x for X-counted")
+        if not coded and not 1 <= n <= 32:
             raise err("bit count must be 1..32")
-        return isa.OP_IN, isa.in_(isa.IN_SRC[a[0].lower()], n & 31, mnem == "in.c")
+        return isa.OP_IN, isa.in_(isa.IN_SRC[a[0].lower()], n & 31, coded)
 
     if mnem in ("out", "out.c"):
         a = _args(rest)
         if len(a) != 2 or a[0].lower() not in isa.OUT_DST:
             raise err("bad out")
-        n = ctx.val(a[1], lineno)
-        if not 1 <= n <= 32:
+        coded = mnem == "out.c"
+        n = 0 if (coded and a[1].lower() == "x") else ctx.val(a[1], lineno)
+        if coded and not 0 <= n <= 31:
+            raise err("coded bit count must be 1..31, or 0 / x for X-counted")
+        if not coded and not 1 <= n <= 32:
             raise err("bit count must be 1..32")
-        return isa.OP_OUT, isa.out(isa.OUT_DST[a[0].lower()], n & 31, mnem == "out.c")
+        return isa.OP_OUT, isa.out(isa.OUT_DST[a[0].lower()], n & 31, coded)
 
     if mnem in ("push", "pull"):
         a = [x.lower() for x in _args(rest)]

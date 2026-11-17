@@ -1,0 +1,27 @@
+; SPI target (peripheral), mode 0, MSB first, 8-bit frames, full duplex.
+; in_base = MOSI, out_base = MISO (out_count 1); SCK and CS_N are given as GPIO numbers.
+; Shift left both ways; autopush threshold 8 (received byte in bits [7:0]).
+; Response bytes are pushed by the host in bits [31:24]; when the TX FIFO is empty
+; the target answers 0xFF. Trap: pattern "CS_N high" -> start (aborts a partial frame).
+; Max SCK ~ f_clk / 24.
+.program spi_target
+.define CS 10
+.define SCK 9
+start:
+    mov isr, null
+    mov x, ~null            ; 'pull noblock' on an empty FIFO copies X -> 0xFF...
+    wait 0 gpio CS
+    helper arm
+byte:
+    pull noblock
+    set y, 7
+    out pins, 1             ; first bit must be valid before the first rising edge
+bit:
+    wait 1 gpio SCK
+    in pins, 1
+    wait 0 gpio SCK
+    jmp y--, more
+    jmp byte
+more:
+    out pins, 1
+    jmp bit

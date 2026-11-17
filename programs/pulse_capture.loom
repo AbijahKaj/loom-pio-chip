@@ -1,0 +1,11 @@
+; Pulse-width / edge-interval capture using the timestamp helper.
+; ts_pin = input, ts_edge = both: every edge records the interval since the previous edge.
+; in_shift_right = 0, autopush threshold 32: two 16-bit intervals per RX FIFO word.
+; Intervals are in system clock cycles (16-bit, wrapping) -- works for IR remotes,
+; PWM capture, 1-Wire timing, auto-baud detection.
+.program pulse_capture
+.wrap_target
+    wait 1 event edge
+    helper clear             ; consume the edge flag
+    in tstamp, 16
+.wrap

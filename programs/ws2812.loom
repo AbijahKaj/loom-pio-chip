@@ -1,0 +1,14 @@
+; WS2812 / NeoPixel driver, 800 kb/s. 10 ticks per bit: clkdiv = f_clk / 8 MHz (7.5 at 60 MHz).
+; '0' = 3 ticks high (0.375 us), '1' = 7 ticks high (0.875 us).
+; side-set base = DIN. out_shift_right = 0, autopull threshold 24 (GRB in bits [31:8]).
+.program ws2812
+.side_set 1
+.wrap_target
+bitloop:
+    out x, 1        side 0 [2]   ; low tail of the previous bit (3 ticks)
+    jmp !x, zero    side 1 [2]   ; high for 3 ticks either way
+one:
+    jmp bitloop     side 1 [3]   ; '1': stay high 4 more ticks
+zero:
+    nop             side 0 [3]   ; '0': low 4 ticks
+.wrap

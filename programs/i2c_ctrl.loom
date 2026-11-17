@@ -1,0 +1,48 @@
+; I2C controller (100 / 400 kHz), with clock stretching and repeated start.
+; SDA and SCL are open-drain GPIOs (enable them in the OD register and set their
+; GPIO output bits to 1 = released before enabling the engine).
+; set_base = out_base = in_base = SDA (counts 1), side-set base = SCL.
+; 11 ticks per bit (SCL low 6, high 5): clkdiv = f_clk / (11 * f_scl).
+; Shift left both ways, no autopush/autopull.
+;
+; Command words (TX FIFO): [10:9] = 0 byte, 1 START, 2 STOP, 3 repeated START
+;                          [8:0]  = frame {data[7:0], ack}: write -> ack=1 (release),
+;                                   read -> data=0xFF, ack=0 (ACK) / 1 (NACK)
+; Every byte command pushes one RX word: {data[7:0], ack} in bits [8:0].
+.program i2c_ctrl
+.side_set 1 opt
+.define SCL 1
+.wrap_target
+cmd:
+    pull block
+    out null, 21
+    out x, 2
+    jmp !x, do_byte
+    jmp x--, c1
+c1: jmp !x, do_start
+    jmp x--, c2
+c2: jmp !x, do_stop
+do_rstart:                  ; SCL is low here
+    set pins, 1     side 0 [3]
+    nop             side 1 [3]
+    wait 1 gpio SCL
+do_start:                   ; SDA high, SCL high
+    set pins, 0     side 1 [3]
+    nop             side 0 [3]
+    jmp cmd
+do_stop:                    ; SCL is low here
+    set pins, 0     side 0 [3]
+    nop             side 1 [3]
+    wait 1 gpio SCL
+    set pins, 1     side 1 [3]
+    jmp cmd
+do_byte:
+    set y, 8
+bitloop:
+    out pins, 1     side 0 [3]   ; change SDA while SCL low
+    nop             side 1 [1]   ; release SCL
+    wait 1 gpio SCL              ; clock stretching
+    in pins, 1             [1]   ; sample SDA while SCL high
+    jmp y--, bitloop side 0 [1]
+    push block
+.wrap

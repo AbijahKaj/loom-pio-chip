@@ -1,0 +1,19 @@
+; Low-speed USB (1.5 Mb/s) packet transmitter: NRZI + bit stuffing + EOP, all in the coder.
+; clkdiv = f_clk / 1.5 MHz (40 at 60 MHz): one tick per bit.
+; out_base = set_base = D- (GPIO n), D+ = GPIO n+1, out_count = set_count = 2.
+; Coder: NRZI (toggle on 0), stuffing after 6 ones, diff output, idle level 1 (J: D- high).
+; out_shift_right = 1, autopull threshold 32.
+; Host pushes: bit count (SYNC + PID + payload + CRC), then the packet bits LSB first.
+.program usb_ls_tx
+.wrap_target
+    pull block
+    mov x, osr               ; X = number of bits
+    out null, 32             ; empty the OSR so autopull fetches packet data
+    helper coder             ; NRZI level = J, stuff run = 0
+    set pins, 1              ; J
+    set pindirs, 3           ; drive D-/D+
+    out.c pins, 0            ; X-counted: the whole packet, NRZI + stuffing, no gaps
+    set pins, 0      [1]     ; SE0 for 2 bit times
+    set pins, 1              ; J for 1 bit time
+    set pindirs, 0           ; release the bus
+.wrap

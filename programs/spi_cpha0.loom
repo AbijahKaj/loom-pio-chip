@@ -1,0 +1,12 @@
+; SPI controller, CPHA = 0 (modes 0 and 2). Full duplex, 4 ticks per bit.
+; SCK = f_clk / (4 * clkdiv). side-set = SCK, out_base = MOSI, in_base = MISO.
+; autopull + autopush with threshold = frame length (e.g. 8), MSB first: shift left.
+; Assemble with CPOL=1 for mode 2. Chip select is driven by the host (GPIO register)
+; or by another engine.
+.program spi_cpha0
+.side_set 1
+.define CPOL 0
+.wrap_target
+    out pins, 1     side CPOL     [1]   ; setup data, SCK idle level (stalls here when TX FIFO empty)
+    in pins, 1      side 1-CPOL   [1]   ; leading edge: sample
+.wrap

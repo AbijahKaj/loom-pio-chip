@@ -71,13 +71,13 @@ CFG_FIELDS = dict(
     jmp_pin=0, in_shr=0, out_shr=0, autopush=0, autopull=0, push_th=0, pull_th=0, out_base=0,
     out_count=0, set_base=0, set_count=0, side_base=0, in_base=0, c_mode=0, c_nrzi_tog=0,
     c_manch_pol=0, c_stuff_en=0, c_stuff_mode=0, c_stuff_n=0, c_diff=0, c_idle=0, ts_pin=0, ts_edge=0,
-    dpll_en=0, crc_width=0, crc_init1=0, crc_poly=0, pat_mask=0, pat_val=0, trap_en=0, trap_pol=0,
+    dpll_en=0, crc_width=0, crc_skip_cfg=0, crc_init1=0, crc_poly=0, pat_mask=0, pat_val=0, trap_en=0, trap_pol=0,
     trap_ev=0, trap_addr=0, timeout=0,
 )
 STATE_FIELDS = dict(
     pc=0, x=0, y=0, osr=0, isr=0, osr_cnt=32, isr_cnt=0, delay_cnt=0, irq_wait=0, cb_active=0,
     cb_left=0, div_cnt=0, div_acc=0, stuff_on=0, run=0, last_bit=0, tx_lvl=0, rx_lvl=0, mph=0,
-    stuff_err=0, crc=0, ts_prev=0, last_ts=0, delta_ts=0, edge_flag=0, trap_armed=0,
+    stuff_err=0, crc=0, crc_skip=0, ts_prev=0, last_ts=0, delta_ts=0, edge_flag=0, trap_armed=0,
 )
 
 
@@ -138,6 +138,12 @@ class Engine:
         side_v = side_raw & (~(0xF << side_n) & 0xF)
         side_act = c["ss_count"] != 0 and side_n != 0 and (not c["ss_en"] or (ds >> 3) & 1)
         n6 = 32 if (arg & 31) == 0 else (arg & 31)
+        xmode = (arg & 31) == 0
+        x_dec = (s["x"] - 1) & M32
+        cb_cur = s["cb_left"] if s["cb_active"] else n6
+        cnt_last = (s["x"] == 1) if xmode else (cb_cur == 1)
+        cnt_zero = (s["x"] == 0) if xmode else (cb_cur == 0)
+        stuff_now = bool(s["stuff_on"] and c["c_stuff_n"] != 0 and s["run"] == c["c_stuff_n"])
 
         exec_ = tick and not trap_fire and s["delay_cnt"] == 0
         out["tick"], out["exec"] = int(bool(tick)), int(bool(exec_))
@@ -235,7 +241,7 @@ class Engine:
                 do_push = 0
                 new_isr = 0
                 cnt_sum = 0
-                if coded and f_hi == 0:
+                if coded and f_hi in (0, 3):
                     s_in = pins_in & 1
                     sym_done = 1
                     lbit = 0
@@ -251,30 +257,36 @@ class Engine:
                             nx["mph"] = 0
                     else:
                         lbit = s_in
-                    cb_left = s["cb_left"] if s["cb_active"] else n6
-                    nx["cb_left"] = cb_left
+                    cnt_left = cb_cur
+                    nx["cb_left"] = cnt_left
                     rpt = 1
                     if sym_done:
-                        if s["stuff_on"] and c["c_stuff_n"] != 0 and run == c["c_stuff_n"]:
+                        if stuff_now:
                             exp = (s["last_bit"] ^ 1) if c["c_stuff_mode"] else 0
                             if lbit != exp:
                                 nx["stuff_err"] = 1
                             nx["run"] = 1 if c["c_stuff_mode"] else 0
                             nx["last_bit"] = lbit
+                            if cnt_zero:
+                                rpt = 0
                         else:
-                            isr = s["isr"]
-                            new_isr = ((lbit << 31) | (isr >> 1)) if c["in_shr"] else (((isr << 1) | lbit) & M32)
-                            cnt_sum = sat_add(s["isr_cnt"], 1)
-                            crc_step, crc_bit = 1, lbit
                             if c["c_stuff_mode"]:
                                 nx["run"] = run_inc if lbit == s["last_bit"] else 1
                             else:
                                 nx["run"] = run_inc if lbit else 0
                             nx["last_bit"] = lbit
-                            nx["cb_left"] = (cb_left - 1) & 63
-                            if nx["cb_left"] == 0:
+                            if xmode:
+                                nx["x"] = x_dec
+                            else:
+                                nx["cb_left"] = (cnt_left - 1) & 63
+                            if cnt_last and not (s["stuff_on"] and c["c_stuff_n"] != 0 and nx["run"] == c["c_stuff_n"]):
                                 rpt = 0
-                            do_push = 1
+                            if f_hi == 0:
+                                isr = s["isr"]
+                                new_isr = ((lbit << 31) | (isr >> 1)) if c["in_shr"] else (((isr << 1) | lbit) & M32)
+                                cnt_sum = sat_add(s["isr_cnt"], 1)
+                                crc_step, crc_bit = 1, lbit
+                                do_push = 1
                     nx["cb_active"] = rpt
                 else:
                     new_isr = in_new
@@ -298,12 +310,12 @@ class Engine:
                 nx["osr"], nx["osr_cnt"] = osr_e, osr_cnt_e
                 if coded and f_hi in (0, 3):
                     dbit = (osr_e & 1) if c["out_shr"] else (osr_e >> 31) & 1
-                    cb_left = s["cb_left"] if s["cb_active"] else n6
-                    nx["cb_left"] = cb_left
+                    cnt_left = cb_cur
+                    nx["cb_left"] = cnt_left
                     rpt = 1
                     sym_done = 1
                     if f_hi == 0:
-                        need_stuff = s["stuff_on"] and c["c_stuff_n"] != 0 and run == c["c_stuff_n"]
+                        need_stuff = stuff_now
                         stuff_bit = (s["last_bit"] ^ 1) if c["c_stuff_mode"] else 0
                         lbit = stuff_bit if need_stuff else dbit
                         if c["c_mode"] == 1:
@@ -324,6 +336,8 @@ class Engine:
                         if need_stuff:
                             nx["run"] = 1 if c["c_stuff_mode"] else 0
                             nx["last_bit"] = stuff_bit
+                            if cnt_zero:
+                                rpt = 0
                         else:
                             nx["osr"] = (osr_e >> 1) if c["out_shr"] else ((osr_e << 1) & M32)
                             nx["osr_cnt"] = sat_add(osr_cnt_e, 1)
@@ -334,8 +348,12 @@ class Engine:
                                 else:
                                     nx["run"] = run_inc if dbit else 0
                                 nx["last_bit"] = dbit
-                            nx["cb_left"] = (cb_left - 1) & 63
-                            if nx["cb_left"] == 0:
+                            if xmode:
+                                nx["x"] = x_dec
+                            else:
+                                nx["cb_left"] = (cnt_left - 1) & 63
+                            if cnt_last and not (f_hi == 0 and s["stuff_on"] and c["c_stuff_n"] != 0
+                                                 and nx["run"] == c["c_stuff_n"]):
                                 rpt = 0
                     nx["cb_active"] = rpt
                 else:
@@ -422,6 +440,7 @@ class Engine:
                 elif f_hi == 3:
                     if imm & 1:
                         nx["crc"] = crc_wmask if c["crc_init1"] else 0
+                        nx["crc_skip"] = c["crc_skip_cfg"]
                     if imm & 2:
                         nx.update(run=0, last_bit=0, mph=0, tx_lvl=c["c_idle"], rx_lvl=c["c_idle"])
                     if imm & 4:
@@ -437,11 +456,14 @@ class Engine:
                     pw_en, pw_dir, pw_base, pw_cnt, pw_val = 1, 1, c["set_base"], c["set_count"], imm
 
             if crc_step:
-                crc = s["crc"]
-                nx["crc"] = ((crc << 1) & crc_wmask) ^ ((c["crc_poly"] & crc_wmask) if (crc_bit ^ crc_msb) else 0)
+                if s["crc_skip"]:
+                    nx["crc_skip"] = s["crc_skip"] - 1
+                else:
+                    crc = s["crc"]
+                    nx["crc"] = ((crc << 1) & crc_wmask) ^ ((c["crc_poly"] & crc_wmask) if (crc_bit ^ crc_msb) else 0)
 
             if stall:
-                for k in ("x", "y", "osr", "isr", "osr_cnt", "isr_cnt", "crc", "cb_active", "cb_left",
+                for k in ("x", "y", "osr", "isr", "osr_cnt", "isr_cnt", "crc", "crc_skip", "cb_active", "cb_left",
                           "run", "last_bit", "tx_lvl", "rx_lvl", "mph", "stuff_err"):
                     nx[k] = s[k]
                 out["txf_pop"] = out["rxf_push"] = 0
@@ -550,11 +572,12 @@ class Engine:
                          ts_pin=d >> 12 & 31, ts_edge=d >> 17 & 3, dpll_en=d >> 19 & 1)
                 s.update(stuff_on=d >> 4 & 1, tx_lvl=d >> 11 & 1, rx_lvl=d >> 11 & 1)
             elif a == R.CRCCFG:
-                c.update(crc_width=d & 63, crc_init1=d >> 6 & 1)
+                c.update(crc_width=d & 63, crc_init1=d >> 6 & 1, crc_skip_cfg=d >> 7 & 63)
             elif a == R.CRCPOLY:
                 c["crc_poly"] = d
             elif a == R.CRCVAL:
                 s["crc"] = d
+                s["crc_skip"] = c["crc_skip_cfg"]
             elif a == R.PATMASK:
                 c["pat_mask"] = d & 0xFFFFF
             elif a == R.PATVAL:

@@ -1,0 +1,27 @@
+; Low-speed USB packet receiver.
+; in_base = D-. Coder: NRZI (toggle on 0), de-stuffing after 6 ones, idle level 0 (K: the
+; first K of SYNC is consumed by 'wait', decoding continues from K).
+; Clock recovery: ts_pin = D-, both edges, DPLL on, clkdiv = f_clk / 1.5 MHz (one tick per bit).
+; Trap: pattern SE0 (D- = D+ = 0), pol 1 -> eop.
+; CRC: width 16, poly 0x8005, init ones, skip 8 (PID): a good packet leaves residue 0x800D.
+; in_shift_right = 1, autopush threshold 32.
+; Per packet the RX FIFO gets: full data words..., the partial word, a status word
+; (bits [5:0] = valid bits in the partial word, at the top), and the CRC residue.
+; IRQ flag 0 (relative) is set when a packet is complete.
+.program usb_ls_rx
+start:
+    helper coder clear crc arm
+    set x, 0                 ; X = 0 -> unbounded X-counted receive (ends by trap)
+    wait 0 pin 0             ; first K of SYNC
+    in.c null, 7             ; rest of SYNC: decode and discard
+    in.c pins, 0             ; PID + payload + CRC until EOP
+eop:
+    mov y, status            ; y[5:0] = bits in the partial ISR word
+    push block               ; partial word
+    mov isr, y
+    push block               ; status word
+    mov isr, crc
+    push block               ; CRC residue
+    irq set 0 rel
+    wait 1 pin 0             ; back to idle J
+    jmp start

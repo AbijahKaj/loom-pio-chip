@@ -15,6 +15,10 @@
   "//": "Users have reported that values up to 80 worked well for them.",
   "PL_TARGET_DENSITY_PCT": 60,
 
+  "//": "Loom: area-oriented synthesis. The default DELAY 4 ABC script inserts ~34k buffers on this",
+  "//": "design (947k um^2 instance area); AREA 0 maps it to ~0.5 mm^2 and timing is closed in PnR.",
+  "SYNTH_STRATEGY": "AREA 0",
+
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",
   "CLOCK_PERIOD": 20,
