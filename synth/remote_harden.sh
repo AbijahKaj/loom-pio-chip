@@ -35,7 +35,14 @@ nix-shell librelane/shell.nix --run '
   set -e
   [ -d venv ] || python3 -m venv --system-site-packages venv
   . venv/bin/activate
-  pip install -q -r loom/tt/requirements.txt
+  # use KLayout from the Nix environment; pip wheels need Nix-provided libstdc++ and cairo
+  grep -v "^klayout==" loom/tt/requirements.txt > tt-req.txt
+  pip install -q -r tt-req.txt
+  pip uninstall -q -y klayout 2>/dev/null || true
+  GCCLIB=$(ls -d /nix/store/*-gcc-*-lib/lib 2>/dev/null | sort -V | tail -1)
+  CAIROLIB=$(ls -d /nix/store/*-cairo-1.*[0-9]/lib 2>/dev/null | sort -V | tail -1)
+  export LD_LIBRARY_PATH=$GCCLIB:$CAIROLIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+  python -c "import klayout.db, gdstk, cairosvg; print(\"python deps ok\")"
   cd loom
   python ./tt/tt_tool.py --pdk $PDK --create-user-config
   python ./tt/tt_tool.py --pdk $PDK --harden --no-docker
