@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 ID = 0x00          # R   "LOOM" = 0x4C4F4F4D
 CTRL = 0x01        # RW  [3:0] enable, W1P: [7:4] restart, [11:8] fifo clear, [15:12] divider sync
 FLEVEL = 0x02      # R   per engine n: [8n+2:8n] TX level, [8n+6:8n+4] RX level
-IMEM_ADDR = 0x03   # RW  imem write pointer
-IMEM_DATA = 0x05   # W   imem[ptr++] = data[15:0]   (port: address does not auto-increment)
+IMEM_ADDR = 0x03   # RW  imem write pointer {engine[1:0], address[5:0]} (one 64-word SRAM bank per engine)
+IMEM_DATA = 0x05   # W   bank[ptr[7:6]][ptr[5:0]] = data[15:0]; ptr++  (load a bank only while its engine is disabled)
 IRQ = 0x06         # RW  R: flags; W: clear [7:0], set [15:8]
 GPIO = 0x07        # RW  R: 20-bit input vector; W: GPIO output register
 OD = 0x08          # RW  open-drain enables for GPIO0..7

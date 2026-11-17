@@ -21,6 +21,7 @@ project:
     - "loom_engine.v"
     - "loom_fifo.v"
     - "loom_spi.v"
+    - "RM_IHPSG13_1P_64x16_c2_bb.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).

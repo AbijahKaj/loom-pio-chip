@@ -164,8 +164,8 @@ class Loom:
         return out if n > 1 else out[0]
 
     # ------------------------------------------------------------ high level
-    async def load(self, program, origin=0):
-        await self.write(R.IMEM_ADDR, origin)
+    async def load(self, program, origin=0, engine=0):
+        await self.write(R.IMEM_ADDR, (engine << 6) | origin)
         await self.write(R.IMEM_DATA, *program.relocated(origin))
 
     async def configure(self, n, cfg):

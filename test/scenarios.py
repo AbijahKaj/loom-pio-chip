@@ -36,7 +36,7 @@ async def uart_loopback(b, bit_cycles=None):
     drv = b.add(M.UartDriver(8, bit_cycles, gap=3))
     ptx, prx = prog("uart_tx"), prog("uart_rx")
     await b.load(ptx, 0)
-    await b.load(prx, 8)
+    await b.load(prx, 8, engine=1)
     await b.configure(0, ptx.config(0, clkdiv=bit_cycles / 4, out_base=13, out_count=1, sideset_base=13,
                                     out_shift_right=True))
     await b.configure(1, prx.config(8, clkdiv=bit_cycles / 8, in_base=8, jmp_pin=8, in_shift_right=True))
@@ -470,9 +470,9 @@ async def concurrent(b):
     tgt = b.add(M.SpiTarget(sck=14, mosi=15, miso=9, responses=[0x11, 0x22, 0x33]))
     ptx, prx, pspi, pcap = prog("uart_tx"), prog("uart_rx"), prog("spi_cpha0"), prog("pulse_capture")
     await b.load(ptx, 0)
-    await b.load(prx, 4)
-    await b.load(pspi, 13)
-    await b.load(pcap, 15)
+    await b.load(prx, 4, engine=1)
+    await b.load(pspi, 13, engine=2)
+    await b.load(pcap, 15, engine=3)
     await b.configure(0, ptx.config(0, clkdiv=bc / 4, out_base=13, out_count=1, sideset_base=13,
                                     out_shift_right=True))
     await b.configure(1, prx.config(4, clkdiv=bc / 8, in_base=8, jmp_pin=8, in_shift_right=True))

@@ -26,7 +26,7 @@ from . import isa
 from .regs import EVENT_NAMES, EngineConfig
 
 
-IMEM_DEPTH = 32   # instruction memory entries on the TTIHP 8x4 build
+IMEM_DEPTH = 64   # instruction words per engine (one 64x16 SRAM bank each)
 
 
 class AsmError(Exception):

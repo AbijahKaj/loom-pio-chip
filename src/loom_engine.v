@@ -36,6 +36,7 @@ module loom_engine #(
     output wire [31:0] dbg_x,
     // instruction memory
     output wire [5:0]  pc_o,
+    output wire [5:0]  pc_next_o,   // PC after this clock edge (synchronous instruction-memory address)
     input  wire [15:0] instr,
     // pins
     input  wire [19:0] gpio_in,
@@ -710,4 +711,5 @@ module loom_engine #(
   assign dbg   = {2'd0, osr_cnt, stuff_on, mph, edge_flag, stuff_err, trap_armed, cb_active,
                   irq_wait, 1'b0, isr_cnt, delay_cnt, pc};
   assign dbg_x = x;
+  assign pc_next_o = restart ? start_addr : nx_pc;
 endmodule

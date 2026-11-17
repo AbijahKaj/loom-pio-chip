@@ -74,8 +74,9 @@ class Loom:
         if v != LOOM_ID:
             raise OSError("Loom not found (ID=%08x)" % v)
 
-    def load(self, words, origin=0):
-        self.write(IMEM_ADDR, origin)
+    def load(self, words, origin=0, engine=0):
+        """Load into an engine's 64-word bank (the engine must be disabled)."""
+        self.write(IMEM_ADDR, (engine << 6) | origin)
         self.write(IMEM_DATA, *words)
 
     def configure(self, n, regs):
@@ -121,7 +122,7 @@ class Loom:
             self.write(OD, app["od"])
         mask = 0
         for e in app["engines"]:
-            self.load(e["code"], e["origin"])
+            self.load(e["code"], e["origin"], e["engine"])
             self.configure(e["engine"], e["regs"])
             mask |= 1 << e["engine"]
         self.enable(mask)

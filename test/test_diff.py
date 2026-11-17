@@ -179,10 +179,11 @@ async def test_diff_random(dut):
         ls = Lockstep(dut, chip, lm)
         task = cocotb.start_soon(ls.run())
 
-        n_prog = rng.randrange(4, 33)
-        words = rand_program(rng, n_prog) + rand_program(rng, 32)[n_prog:]   # fill all 32 imem words
-        await lm.write(R.IMEM_ADDR, 0)
-        await lm.write(R.IMEM_DATA, *words)
+        n_prog = rng.randrange(4, 65)
+        for bank in range(4):                     # one 64-word SRAM bank per engine, different programs
+            words = rand_program(rng, n_prog) + rand_program(rng, 64)[n_prog:]
+            await lm.write(R.IMEM_ADDR, bank << 6)
+            await lm.write(R.IMEM_DATA, *words)
         cfgs = [rand_config(rng, n_prog) for _ in range(4)]
         for i, c in enumerate(cfgs):
             regs = c.regs()
