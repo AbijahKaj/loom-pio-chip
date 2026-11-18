@@ -17,7 +17,8 @@
 | 2 | 64×16 imem, `AREA 0`, density 60 | Synthesis 533k µm²; post-CTS utilisation 54%, **setup WNS +6.8 ns at 20 ns**. Global routing overflow 8.9k (Metal3 at 89%); detailed routing started with ~36k violations, so the run was stopped. |
 | 3 | 32×16 imem, density 50, GRT 0.2, 16 ns (Linux, Nix, no Docker) | **Routed clean**: global-routing overflow 0; detailed routing 0 violations after 2 antenna-diode rounds (137 + 18 diodes); **Magic DRC 0, LVS pass, antenna pass**; hold met at all corners. Setup: fast +5.2 ns, **typical −0.4 ns (≈16.4 ns path → 60 MHz passes at 16.67 ns)**, slow −10.1 ns (≈26 ns path). The flow failed only on setup at 16 ns. |
 | 4 | as run 3, `CLOCK_PERIOD` 25 ns | Routed clean, but setup: typical +5.0 ns, **slow −7.1 ns** (70 paths). With the relaxed constraint the resizer did less, and PnR optimised only the typical corner, with no slew limit (265 slow-corner slew violations). Stopped. |
-| 5 | as run 4 + `MAX_TRANSITION_CONSTRAINT` 1.0, `RUN_POST_GRT_RESIZER_TIMING`, `PNR_CORNERS` typ+slow | Running |
+| 5 | as run 4 + `MAX_TRANSITION_CONSTRAINT` 1.0, `RUN_POST_GRT_RESIZER_TIMING`, `PNR_CORNERS` typ+slow | **DRC, LVS, antenna pass**; hold met everywhere; setup typical **+5.7 ns at 25 ns**, fast +12.7 ns, slow **−6.2 ns** (23 paths). Post-CTS slow slack was +5.7 ns: routed wires on 3 layers cost about 12 ns. Critical path: about 7.5 ns of weak `buf_1` fan-out on PC bits into the 32:1 imem mux, then decode, then execute. |
+| 6 | as run 5, `CLOCK_PERIOD` 33 ns, resizer setup margins 6 / 4 ns | Running |
 
 ## Running it
 
