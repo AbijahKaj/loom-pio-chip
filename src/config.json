@@ -34,6 +34,7 @@
   "MACROS": {"RM_IHPSG13_1P_64x16_c2": {"gds": ["pdk_dir::libs.ref/sg13cmos5l_sram/gds/RM_IHPSG13_1P_64x16_c2.gds"], "lef": ["pdk_dir::libs.ref/sg13cmos5l_sram/lef/RM_IHPSG13_1P_64x16_c2.lef"], "nl": [], "spef": {}, "spice": ["pdk_dir::libs.ref/sg13cmos5l_sram/cdl/RM_IHPSG13_1P_64x16_c2.cdl"], "lib": {"nom_typ_1p20V_25C": ["pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_64x16_c2_typ_1p20V_25C.lib"], "nom_fast_1p32V_m40C": ["pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_64x16_c2_fast_1p32V_m55C.lib"], "nom_slow_1p08V_125C": ["pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_64x16_c2_slow_1p08V_125C.lib"]}, "instances": {"eng[0].u_imem": {"location": [18.29, 3.78], "orientation": "FS"}, "eng[1].u_imem": {"location": [377.97, 3.78], "orientation": "FS"}, "eng[2].u_imem": {"location": [737.65, 3.78], "orientation": "FS"}, "eng[3].u_imem": {"location": [1097.33, 3.78], "orientation": "FS"}}}},
   "PDN_MACRO_CONNECTIONS": ["eng\\\\?\\[0\\\\?\\]\\.u_imem VPWR VGND VDD! VSS!", "eng\\\\?\\[0\\\\?\\]\\.u_imem VPWR VGND VDDARRAY! VSS!", "eng\\\\?\\[1\\\\?\\]\\.u_imem VPWR VGND VDD! VSS!", "eng\\\\?\\[1\\\\?\\]\\.u_imem VPWR VGND VDDARRAY! VSS!", "eng\\\\?\\[2\\\\?\\]\\.u_imem VPWR VGND VDD! VSS!", "eng\\\\?\\[2\\\\?\\]\\.u_imem VPWR VGND VDDARRAY! VSS!", "eng\\\\?\\[3\\\\?\\]\\.u_imem VPWR VGND VDD! VSS!", "eng\\\\?\\[3\\\\?\\]\\.u_imem VPWR VGND VDDARRAY! VSS!"],
   "FP_PDN_VSPACING": 3.52,
+  "PDN_CFG": "dir::pdn_cfg.tcl",
   "FP_PDN_VOFFSET": 10,
   "PNR_CORNERS": ["nom_typ_1p20V_25C", "nom_slow_1p08V_125C"],
   "PL_RESIZER_SETUP_SLACK_MARGIN": 6,
