@@ -55,6 +55,7 @@ MODE=__MODE__ nix-shell librelane/shell.nix --run '
   python ./tt/tt_tool.py --pdk $PDK --create-user-config
   if [ "$MODE" = pdn ]; then
     python -c "import json; c=json.load(open(\"src/config.json\")); c.update(json.load(open(\"src/user_config.json\"))); json.dump(c, open(\"src/config_merged.json\",\"w\"), indent=2)"
+    mkdir -p runs/pdn
     python -m librelane --pdk-root $PDK_ROOT --pdk $PDK --run-tag pdn --force-run-dir runs/pdn --to OpenROAD.GeneratePDN src/config_merged.json
     echo HARDEN_DONE
     exit 0
