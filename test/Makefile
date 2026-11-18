@@ -6,7 +6,7 @@ SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = project.v loom_engine.v loom_fifo.v loom_spi.v
+PROJECT_SOURCES = project.v loom_engine.v loom_fifo.v loom_spi.v RM_IHPSG13_1P_64x16_c2_bb.v
 
 ifeq ($(GATES),synth)
 
@@ -43,6 +43,10 @@ VERILOG_SOURCES += $(PDK_LIBS_REF)/$(PDK_CELL_PREFIX)_stdcell/verilog/$(PDK_CELL
 VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
 
 endif
+
+# IHP SRAM behavioural models (instruction memory macros), used by RTL and gate-level simulation
+COMPILE_ARGS    += -DSIM -DFUNCTIONAL
+VERILOG_SOURCES += $(PWD)/ihp_sram/SRAM_1P_behavioral.v $(PWD)/ihp_sram/RM_IHPSG13_1P_64x16_c2.v
 
 # Allow sharing configuration between design and testbench via `include`:
 COMPILE_ARGS 		+= -I$(SRC_DIR)

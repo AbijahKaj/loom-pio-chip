@@ -16,9 +16,9 @@ module tt_um_abijahkaj_loom (
     input  wire       rst_n
 );
   localparam [31:0] LOOM_ID = 32'h4C4F_4F4D;  // "LOOM"
-  // Instruction memory depth = 2**IMEM_AW. The ISA has 6-bit addresses (up to 64); this
-  // shuttle uses 32 entries (like the RP2040 PIO) to keep routing demand within 3 metal layers.
-  localparam IMEM_AW = 5;
+  // Instruction memory: one 64x16 IHP SRAM macro per engine (64 instructions each). The SRAM
+  // is addressed with the engine's *next* PC, so its registered output always holds imem[pc]
+  // and the engines keep their single-cycle timing. Load a bank only while its engine is disabled.
 
   // ------------------------------------------------------------ input synchronisers
   reg [7:0] ui_s1, ui_s2, uio_s1, uio_s2;
@@ -51,19 +51,19 @@ module tt_um_abijahkaj_loom (
   // ------------------------------------------------------------ global registers
   reg  [3:0]  en;
   reg  [3:0]  restart, fifo_clr, div_sync;
-  reg  [5:0]  imem_ptr;
+  reg  [7:0]  imem_ptr;    // {engine[1:0], address[5:0]}
   reg  [7:0]  irq;
   reg  [19:0] gpio_out;
   reg  [7:0]  gpio_oe;
   reg  [7:0]  od;
   reg  [15:0] ts;
-  reg  [15:0] imem[0:(1<<IMEM_AW)-1];
 
   wire glob_wr = h_wr && (h_wr_addr[6:4] == 3'd0);
 
   // ------------------------------------------------------------ engines
   wire [19:0] gpio_in = {gpio_out[19:13], ui_s2[7:3], uio_s2};
-  wire [5:0]  pc[0:3];
+  wire [5:0]  pc[0:3], pc_next[0:3];
+  wire [15:0] instr[0:3];
   wire [19:0] po_mask[0:3], po_val[0:3], pd_mask[0:3], pd_val[0:3];
   wire [7:0]  irq_set[0:3], irq_clr[0:3];
   wire [31:0] rxf_head[0:3], dbg[0:3], dbg_x[0:3];
@@ -81,11 +81,17 @@ module tt_um_abijahkaj_loom (
           .rxf_head(rxf_head[g]), .rxf_empty(rxf_empty[g]),
           .rxf_level(rxf_level[g]), .txf_level(txf_level[g]),
           .dbg(dbg[g]), .dbg_x(dbg_x[g]),
-          .pc_o(pc[g]), .instr(imem[pc[g][IMEM_AW-1:0]]),
+          .pc_o(pc[g]), .pc_next_o(pc_next[g]), .instr(instr[g]),
           .gpio_in(gpio_in),
           .po_mask(po_mask[g]), .po_val(po_val[g]), .pd_mask(pd_mask[g]), .pd_val(pd_val[g]),
           .irq_flags(irq), .irq_set(irq_set[g]), .irq_clr(irq_clr[g]),
           .ts(ts));
+
+      wire bank_we = glob_wr && h_wr_addr[3:0] == 4'h5 && imem_ptr[7:6] == g;
+      RM_IHPSG13_1P_64x16_c2 u_imem (
+          .A_CLK(clk), .A_MEN(1'b1), .A_WEN(bank_we), .A_REN(!bank_we),
+          .A_ADDR(bank_we ? imem_ptr[5:0] : pc_next[g]), .A_DIN(h_wdata[15:0]), .A_DLY(1'b1),
+          .A_DOUT(instr[g]));
     end
   endgenerate
 
@@ -115,7 +121,7 @@ module tt_um_abijahkaj_loom (
       restart  <= 4'd0;
       fifo_clr <= 4'd0;
       div_sync <= 4'd0;
-      imem_ptr <= 6'd0;
+      imem_ptr <= 8'd0;
       irq      <= 8'd0;
       gpio_out <= 20'd0;
       gpio_oe  <= 8'd0;
@@ -138,8 +144,8 @@ module tt_um_abijahkaj_loom (
             fifo_clr <= h_wdata[11:8];
             div_sync <= h_wdata[15:12];
           end
-          4'h3: imem_ptr <= h_wdata[5:0];
-          4'h5: imem_ptr <= imem_ptr + 6'd1;
+          4'h3: imem_ptr <= h_wdata[7:0];
+          4'h5: imem_ptr <= imem_ptr + 8'd1;
           4'h8: od <= h_wdata[7:0];
           4'hA: quad <= h_wdata[0];
           default: ;
@@ -148,10 +154,6 @@ module tt_um_abijahkaj_loom (
     end
   end
 
-  // instruction memory: plain flops, no reset (loaded by the host before enabling)
-  always @(posedge clk) begin
-    if (glob_wr && h_wr_addr[3:0] == 4'h5) imem[imem_ptr[IMEM_AW-1:0]] <= h_wdata[15:0];
-  end
 
   // ------------------------------------------------------------ host read mux
   wire [1:0] h_eng = h_addr[5:4] - 2'd1;   // engine index for addresses 0x10..0x4F
@@ -165,7 +167,7 @@ module tt_um_abijahkaj_loom (
           4'h1: h_rdata = {28'd0, en};
           4'h2: h_rdata = {1'b0, rxf_level[3], 1'b0, txf_level[3], 1'b0, rxf_level[2], 1'b0, txf_level[2],
                            1'b0, rxf_level[1], 1'b0, txf_level[1], 1'b0, rxf_level[0], 1'b0, txf_level[0]};
-          4'h3: h_rdata = {26'd0, imem_ptr};
+          4'h3: h_rdata = {24'd0, imem_ptr};
           4'h6: h_rdata = {24'd0, irq};
           4'h7: h_rdata = {12'd0, gpio_in};
           4'h8: h_rdata = {24'd0, od};

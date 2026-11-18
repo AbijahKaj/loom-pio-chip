@@ -3,26 +3,34 @@
 #   synth/remote_harden.sh start   ship the repo (git bundle over SSH), set up, start hardening in the background
 #   synth/remote_harden.sh status  show progress
 #   synth/remote_harden.sh fetch   copy the results back into ./runs/wokwi (final/, reports, logs)
-# Everything on the remote side lives in ~/$RDIR. Run from the repo root.
+#   synth/remote_harden.sh pdn     quick run that stops after power-grid generation (floorplan/PDN checks)
+# Everything on the remote side lives in ~/$RDIR. BRANCH selects the git branch (default: current).
+# Run from the repo root.
 set -e
 HOST=${HOST:-admin-ml@admin-ml}
 RDIR=${RDIR:-loom-harden}
+BRANCH=${BRANCH:-$(git rev-parse --abbrev-ref HEAD)}
+SHARED=${SHARED:-loom-harden}                # where librelane/, pdk/, venv/ already live
 LL_TAG=${LL_TAG:-3.1.0.dev4}                 # LibreLane version used by the TT IHP flow
 TT_REV=$(git -C tt rev-parse HEAD 2>/dev/null || echo main)
 
-case "${1:-start}" in
-start)
+MODE=${1:-start}
+case "$MODE" in
+start|pdn)
   mkdir -p build
   git bundle create build/loom.bundle --all >/dev/null 2>&1
   ssh "$HOST" "mkdir -p ~/$RDIR"
   scp -q build/loom.bundle "$HOST:$RDIR/loom.bundle"
-  ssh "$HOST" "RDIR=$RDIR LL_TAG=$LL_TAG TT_REV=$TT_REV bash -s" <<'EOF'
+  ssh "$HOST" "RDIR=$RDIR LL_TAG=$LL_TAG TT_REV=$TT_REV BRANCH=$BRANCH SHARED=$SHARED MODE=$MODE bash -s" <<'EOF'
 set -e
 cd ~/$RDIR
 . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh 2>/dev/null || true
 command -v nix-shell >/dev/null || { echo "nix-shell not found: install Nix first"; exit 1; }
-if [ -d loom ]; then git -C loom fetch -q ../loom.bundle main && git -C loom reset -q --hard FETCH_HEAD
-else git clone -q loom.bundle loom; fi
+if [ "$RDIR" != "$SHARED" ]; then          # reuse the shared tool installs
+  for d in librelane pdk venv; do [ -e $d ] || ln -s ~/$SHARED/$d $d; done
+fi
+if [ -d loom ]; then git -C loom fetch -q ../loom.bundle "$BRANCH" && git -C loom reset -q --hard FETCH_HEAD
+else git clone -q -b "$BRANCH" loom.bundle loom; fi
 [ -d loom/tt ] || git clone -q https://github.com/TinyTapeout/tt-support-tools loom/tt
 git -C loom/tt fetch -q origin && git -C loom/tt checkout -q "$TT_REV"
 [ -d librelane ] || git clone -q --branch "$LL_TAG" https://github.com/librelane/librelane librelane
@@ -31,7 +39,7 @@ cat > run.sh <<'RUN'
 set -e
 cd "$(dirname "$0")"
 export PDK_ROOT=$PWD/pdk PDK=ihp-sg13cmos5l
-nix-shell librelane/shell.nix --run '
+MODE=__MODE__ nix-shell librelane/shell.nix --run '
   set -e
   [ -d venv ] || python3 -m venv --system-site-packages venv
   . venv/bin/activate
@@ -45,12 +53,20 @@ nix-shell librelane/shell.nix --run '
   python -c "import klayout.db, gdstk, cairosvg; print(\"python deps ok\")"
   cd loom
   python ./tt/tt_tool.py --pdk $PDK --create-user-config
+  if [ "$MODE" = pdn ]; then
+    python -c "import json; c=json.load(open(\"src/config.json\")); c.update(json.load(open(\"src/user_config.json\"))); json.dump(c, open(\"src/config_merged.json\",\"w\"), indent=2)"
+    mkdir -p runs/pdn
+    python -m librelane --pdk-root $PDK_ROOT --pdk $PDK --run-tag pdn --force-run-dir runs/pdn --to OpenROAD.GeneratePDN src/config_merged.json
+    echo HARDEN_DONE
+    exit 0
+  fi
   python ./tt/tt_tool.py --pdk $PDK --harden --no-docker
   python ./tt/tt_tool.py --pdk $PDK --print-warnings || true
   python ./tt/tt_tool.py --pdk $PDK --print-stats || true
 '
 echo HARDEN_DONE
 RUN
+sed -i "s/__MODE__/$MODE/" run.sh
 chmod +x run.sh
 nohup ./run.sh > harden.log 2>&1 &
 echo "started on $(hostname), log: ~/$RDIR/harden.log"

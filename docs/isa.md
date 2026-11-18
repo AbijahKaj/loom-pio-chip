@@ -69,7 +69,7 @@ start means "unbounded" (2³² bits); such a receive usually ends through an eve
 | 4 | `edge` | Sticky: an edge was seen on `ts_pin` |
 | 5 | `txempty` | TX FIFO empty |
 | 6 | `rxfull` | RX FIFO full |
-| 7 | `always` | 1 |
+| 7 | `qedge` | Sticky: an edge on `ts_pin` occurred **while the pin pattern (event 0) matched**, e.g. I2C START/STOP = SDA edge while SCL high. Cleared by `helper clear`. |
 
 **Traps.** `TRAPCFG` names an event, a polarity and an address. While the trap is armed, the event at a tick
 forces `pc = trap_addr` instead of executing, and cancels any delay or in-progress coded op. The trap then disarms

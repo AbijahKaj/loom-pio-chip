@@ -1,0 +1,67 @@
+; I2C target (peripheral), 7-bit address, write and read transfers, repeated START, STOP.
+; SDA = GPIO given by in_base / jmp_pin / set_base / out_base (open drain); SCL given as a GPIO number.
+; START/STOP detection uses the qualified-edge event: ts_pin = SDA (both edges), pattern = SCL high
+; -> event 7 (qedge) = "SDA changed while SCL high"; trap on it -> 'cond'.
+; Shift left both ways (MSB first), no autopush/autopull.
+; Host protocol: push the own 7-bit address once (first TX word). Received bytes appear in the RX FIFO
+; (bits [7:0]); bytes to return on reads are pushed in bits [31:24] (0xFF.. if the FIFO runs dry).
+; Needs 47 instructions (one engine's 64-word bank).
+.program i2c_target
+.define SCL 1
+init:
+    pull block
+    mov y, osr                  ; own address
+    mov x, ~null                ; read data when the TX FIFO is empty: 0xFF
+idle:
+    helper clear arm            ; clear the START/STOP flag and arm the trap
+    set pins, 1                 ; release SDA
+park:
+    jmp park                    ; everything else starts from the trap
+cond:                           ; SDA changed while SCL high
+    helper clear arm
+    jmp pin, idle               ; SDA high now -> STOP
+    mov isr, null               ; START (or repeated START): 7 address bits
+    set x, 6
+abit:
+    wait 0 gpio SCL
+    wait 1 gpio SCL
+    in pins, 1
+    jmp x--, abit
+    mov x, isr
+    jmp x!=y, idle              ; not our address: stay off the bus until the next START/STOP
+    wait 0 gpio SCL
+    wait 1 gpio SCL             ; R/W bit
+    jmp pin, rd
+    wait 0 gpio SCL
+wack:                           ; ACK, then receive a byte
+    set pins, 0
+    wait 1 gpio SCL
+    wait 0 gpio SCL
+    set pins, 1
+    set x, 7
+    mov isr, null
+wbit:
+    wait 1 gpio SCL
+    in pins, 1
+    wait 0 gpio SCL
+    jmp x--, wbit
+    push noblock
+    jmp wack
+rd:                             ; ACK the address, then send bytes until the controller NACKs
+    wait 0 gpio SCL
+    set pins, 0
+    wait 1 gpio SCL
+rbyte:
+    wait 0 gpio SCL
+    mov x, ~null
+    pull noblock
+    set x, 7
+rbit:
+    out pins, 1
+    wait 1 gpio SCL
+    wait 0 gpio SCL
+    jmp x--, rbit
+    set pins, 1                 ; release SDA for the controller's ACK/NACK
+    wait 1 gpio SCL
+    jmp pin, idle               ; NACK: done
+    jmp rbyte

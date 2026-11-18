@@ -77,7 +77,7 @@ CFG_FIELDS = dict(
 STATE_FIELDS = dict(
     pc=0, x=0, y=0, osr=0, isr=0, osr_cnt=32, isr_cnt=0, delay_cnt=0, irq_wait=0, cb_active=0,
     cb_left=0, div_cnt=0, div_acc=0, stuff_on=0, run=0, last_bit=0, tx_lvl=0, rx_lvl=0, mph=0,
-    stuff_err=0, crc=0, crc_skip=0, ts_prev=0, last_ts=0, delta_ts=0, edge_flag=0, trap_armed=0,
+    stuff_err=0, crc=0, crc_skip=0, ts_prev=0, last_ts=0, delta_ts=0, edge_flag=0, qedge_flag=0, trap_armed=0,
 )
 
 
@@ -124,7 +124,7 @@ class Engine:
             s["edge_flag"],
             int(txf.empty),
             int(rxf.full),
-            1,
+            s["qedge_flag"],
         ]
         trap_fire = s["trap_armed"] and events[c["trap_ev"]] == c["trap_pol"]
 
@@ -187,6 +187,7 @@ class Engine:
         out_osr = funnel if c["out_shr"] else lshift
 
         nx["edge_flag"] = s["edge_flag"] | ts_edge_ev
+        nx["qedge_flag"] = s["qedge_flag"] | (ts_edge_ev & events[0])
         pw_en, pw_dir, pw_base, pw_cnt, pw_val = 0, 0, c["out_base"], c["out_count"], 0
         stall = jump = rpt = 0
         target = 0
@@ -446,6 +447,7 @@ class Engine:
                     if imm & 4:
                         nx["stuff_err"] = 0
                         nx["edge_flag"] = 0
+                        nx["qedge_flag"] = 0
                     if imm & 8:
                         nx["trap_armed"] = c["trap_en"]
                     if (imm >> 4) == 1:
@@ -602,10 +604,10 @@ class Engine:
 class Chip:
     """Whole-chip model below the SPI layer."""
 
-    def __init__(self, n_engines=4, fifo_depth=2, imem_depth=32):
+    def __init__(self, n_engines=4, fifo_depth=2, imem_depth=64):
         self.eng = [Engine(i, fifo_depth) for i in range(n_engines)]
-        self.imem_depth = imem_depth
-        self.imem = [0] * imem_depth
+        self.imem_depth = imem_depth                       # per-engine SRAM bank
+        self.imem = [[0] * imem_depth for _ in range(n_engines)]
         self.en = 0
         self.restart = self.fifo_clr = self.div_sync = 0
         self.imem_ptr = 0
@@ -659,7 +661,7 @@ class Chip:
         combs = []
         for i, e in enumerate(self.eng):
             en = (self.en >> i) & 1 and not (self.restart >> i) & 1
-            instr = self.imem[e.s["pc"] % self.imem_depth]
+            instr = self.imem[i][e.s["pc"] % self.imem_depth]
             combs.append(e.comb(en, instr, gpio_in, self.irq, self.ts))
 
         # top-level merges
@@ -688,7 +690,7 @@ class Chip:
 
         # top sequential
         if glob and wr[0] == R.IMEM_DATA:
-            self.imem[self.imem_ptr % self.imem_depth] = wr[1] & 0xFFFF
+            self.imem[(self.imem_ptr >> 6) & 3][self.imem_ptr & 63] = wr[1] & 0xFFFF
         self.ts = (self.ts + 1) & 0xFFFF
         self.irq = irq & 0xFF
         self.gpio_out = gout & 0xFFFFF
@@ -699,9 +701,9 @@ class Chip:
             if a == R.CTRL:
                 self.en, self.restart, self.fifo_clr, self.div_sync = d & 15, d >> 4 & 15, d >> 8 & 15, d >> 12 & 15
             elif a == R.IMEM_ADDR:
-                self.imem_ptr = d & 63
+                self.imem_ptr = d & 0xFF
             elif a == R.IMEM_DATA:
-                self.imem_ptr = (self.imem_ptr + 1) & 63
+                self.imem_ptr = (self.imem_ptr + 1) & 0xFF
             elif a == R.OD:
                 self.od = d & 0xFF
             elif a == R.HOSTCFG:
@@ -720,8 +722,8 @@ class Chip:
         self.step(rd_pop=addr if v else None)
         return d if v else None
 
-    def load(self, prog, origin=0):
-        self.write(R.IMEM_ADDR, origin)
+    def load(self, prog, origin=0, engine=0):
+        self.write(R.IMEM_ADDR, (engine << 6) | origin)
         for w in prog.relocated(origin):
             self.write(R.IMEM_DATA, w)
 

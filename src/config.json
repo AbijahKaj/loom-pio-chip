@@ -27,6 +27,15 @@
   "//": "slew violations): bound transitions, repair timing on global-route parasitics, PnR on typ + slow.",
   "MAX_TRANSITION_CONSTRAINT": 1.0,
   "RUN_POST_GRT_RESIZER_TIMING": true,
+  "//": "Loom SRAM: four 64x16 IHP SRAM macros (one per engine), flipped (FS) along the bottom edge so their",
+  "//": "Metal2 pins face the logic. The Metal4 stripe grid uses a 44.96 um pitch (4 x the macro's 11.24 um",
+  "//": "supply-column pitch) and 5.62 um VPWR-to-VGND spacing; each macro sits 39.55 um left of a stripe so",
+  "//": "every stripe crossing it lands on a matching VDD/VSS column (>= 1.9 um from the opposite net).",
+  "MACROS": {"RM_IHPSG13_1P_64x16_c2": {"gds": ["pdk_dir::libs.ref/sg13cmos5l_sram/gds/RM_IHPSG13_1P_64x16_c2.gds"], "lef": ["pdk_dir::libs.ref/sg13cmos5l_sram/lef/RM_IHPSG13_1P_64x16_c2.lef"], "nl": [], "spef": {}, "spice": ["pdk_dir::libs.ref/sg13cmos5l_sram/cdl/RM_IHPSG13_1P_64x16_c2.cdl"], "lib": {"nom_typ_1p20V_25C": ["pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_64x16_c2_typ_1p20V_25C.lib"], "nom_fast_1p32V_m40C": ["pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_64x16_c2_fast_1p32V_m55C.lib"], "nom_slow_1p08V_125C": ["pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_64x16_c2_slow_1p08V_125C.lib"]}, "instances": {"eng[0].u_imem": {"location": [18.29, 3.78], "orientation": "FS"}, "eng[1].u_imem": {"location": [377.97, 3.78], "orientation": "FS"}, "eng[2].u_imem": {"location": [737.65, 3.78], "orientation": "FS"}, "eng[3].u_imem": {"location": [1097.33, 3.78], "orientation": "FS"}}}},
+  "PDN_MACRO_CONNECTIONS": ["eng\\\\?\\[0\\\\?\\]\\.u_imem VPWR VGND VDD! VSS!", "eng\\\\?\\[0\\\\?\\]\\.u_imem VPWR VGND VDDARRAY! VSS!", "eng\\\\?\\[1\\\\?\\]\\.u_imem VPWR VGND VDD! VSS!", "eng\\\\?\\[1\\\\?\\]\\.u_imem VPWR VGND VDDARRAY! VSS!", "eng\\\\?\\[2\\\\?\\]\\.u_imem VPWR VGND VDD! VSS!", "eng\\\\?\\[2\\\\?\\]\\.u_imem VPWR VGND VDDARRAY! VSS!", "eng\\\\?\\[3\\\\?\\]\\.u_imem VPWR VGND VDD! VSS!", "eng\\\\?\\[3\\\\?\\]\\.u_imem VPWR VGND VDDARRAY! VSS!"],
+  "FP_PDN_VSPACING": 3.52,
+  "PDN_CFG": "dir::pdn_cfg.tcl",
+  "FP_PDN_VOFFSET": 10,
   "PNR_CORNERS": ["nom_typ_1p20V_25C", "nom_slow_1p08V_125C"],
   "PL_RESIZER_SETUP_SLACK_MARGIN": 6,
   "GRT_RESIZER_SETUP_SLACK_MARGIN": 4,
@@ -59,7 +68,15 @@
 
   "//": "Save some time",
   "RUN_KLAYOUT_XOR": 0,
-  "RUN_KLAYOUT_DRC": 0,
+  "RUN_KLAYOUT_DRC": 1,
+
+  "//": "Loom SRAM: Magic checks the IHP SRAM macros from their abstracts and reports ~35k errors, all",
+  "//": "inside the macro footprints (SRAM-specific rule exceptions it does not model; run 7 showed 0",
+  "//": "outside). DRC sign-off therefore uses the official IHP KLayout deck, as TT's precheck does.",
+  "RUN_MAGIC_DRC": 0,
+  "ERROR_ON_ILLEGAL_OVERLAPS": 0,
+  "KLAYOUT_DRC_RUNSET": "pdk_dir::libs.tech/klayout/tech/drc/ihp-sg13cmos5l.drc",
+  "DRT_ANTENNA_REPAIR_ITERS": 6,
 
   "//": "Don't put clock buffers on the outputs",
   "DESIGN_REPAIR_BUFFER_OUTPUT_PORTS": 0,
@@ -78,7 +95,7 @@
   "FP_IO_HLENGTH": 2,
   "FP_IO_VLENGTH": 2,
 
-  "FP_PDN_VPITCH": 50.0,
+  "FP_PDN_VPITCH": 44.96,
   "FP_PDN_VWIDTH": 2.1,
 
   "//": "Clock",

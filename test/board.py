@@ -88,8 +88,8 @@ class Board:
         """Write using quad-SPI data (HOSTCFG.quad must be set)."""
         await self.be.write(addr, *words, quad=True)
 
-    async def load(self, program, origin=0):
-        await self.write(R.IMEM_ADDR, origin)
+    async def load(self, program, origin=0, engine=0):
+        await self.write(R.IMEM_ADDR, (engine << 6) | origin)
         await self.write(R.IMEM_DATA, *program.relocated(origin))
 
     async def configure(self, n, cfg):

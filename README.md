@@ -11,6 +11,7 @@ pattern events that can trap the program counter. Together they let the same sil
 | SPI controller, modes 0/1/2/3 | `spi_cpha0`, `spi_cpha1` | ✔ |
 | SPI target (CS-abort via trap) | `spi_target` | ✔ |
 | I2C controller (repeated start, NACK, clock stretching) | `i2c_ctrl` | ✔ |
+| I2C target (address match, write/read, repeated START, STOP via qualified-edge trap) | `i2c_target` | ✔ |
 | Low-speed USB TX (NRZI + stuffing + EOP) | `usb_ls_tx` | ✔ |
 | Low-speed USB RX (DPLL, de-stuffing, CRC16 residue check, ±1.5 % clock) | `usb_ls_rx` | ✔ |
 | 10BASE-T TX at full rate (Manchester, quad-SPI host feed) | `eth10_tx`, `eth10_nlp` | ✔ (TX) |

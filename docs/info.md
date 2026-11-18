@@ -1,7 +1,7 @@
 ## How it works
 
 Loom is a **programmable protocol engine**. Four small, cycle-exact state machines ("bit engines"), similar to
-the RP2040's PIO, run user programs from a shared 32-instruction memory and drive 20 GPIOs. Every instruction
+the RP2040's PIO, run user programs from their own 64-instruction SRAM banks (IHP SRAM macros) and drive 20 GPIOs. Every instruction
 takes exactly one engine tick (plus an optional delay), so protocol timing is exact and predictable.
 
 Each engine has **line helpers**, generic hardware for the hard parts of real-world protocols:

@@ -36,6 +36,7 @@ module loom_engine #(
     output wire [31:0] dbg_x,
     // instruction memory
     output wire [5:0]  pc_o,
+    output wire [5:0]  pc_next_o,   // PC after this clock edge (synchronous instruction-memory address)
     input  wire [15:0] instr,
     // pins
     input  wire [19:0] gpio_in,
@@ -98,6 +99,7 @@ module loom_engine #(
   reg        ts_prev;
   reg [15:0] last_ts, delta_ts;
   reg        edge_flag;
+  reg        qedge_flag;   // sticky: ts_pin edge while the pin pattern matches
   reg        trap_armed;
 
   assign pc_o = pc;
@@ -163,7 +165,7 @@ module loom_engine #(
   assign events[4] = edge_flag;
   assign events[5] = txf_empty;
   assign events[6] = rxf_full;
-  assign events[7] = 1'b1;
+  assign events[7] = qedge_flag;   // e.g. I2C START/STOP: SDA edge while SCL high
   wire trap_fire = trap_armed && (events[trap_ev] == trap_pol);
 
   // ---------------------------------------------------------------- decode
@@ -242,7 +244,7 @@ module loom_engine #(
   reg [3:0]  nx_run;
   reg        nx_last, nx_tx_lvl, nx_rx_lvl, nx_mph, nx_stuff_err;
   reg [31:0] nx_crc;
-  reg        nx_trap_armed, nx_edge_flag;
+  reg        nx_trap_armed, nx_edge_flag, nx_qedge_flag;
   // pin write unit request
   reg        pw_en, pw_dir;
   reg [4:0]  pw_base;
@@ -285,6 +287,7 @@ module loom_engine #(
     nx_crc_skip  = crc_skip;
     nx_trap_armed = trap_armed;
     nx_edge_flag = edge_flag | ts_edge_ev;
+    nx_qedge_flag = qedge_flag | (ts_edge_ev & events[0]);
 
     pw_en = 1'b0; pw_dir = 1'b0; pw_base = out_base; pw_cnt = out_count; pw_val = 32'd0;
     irq_set = 8'd0; irq_clr = 8'd0;
@@ -519,7 +522,7 @@ module loom_engine #(
                 nx_run = 4'd0; nx_last = 1'b0; nx_mph = 1'b0;
                 nx_tx_lvl = c_idle; nx_rx_lvl = c_idle;
               end
-              if (arg[2]) begin nx_stuff_err = 1'b0; nx_edge_flag = 1'b0; end
+              if (arg[2]) begin nx_stuff_err = 1'b0; nx_edge_flag = 1'b0; nx_qedge_flag = 1'b0; end
               if (arg[3]) nx_trap_armed = trap_en;
               if (arg[5:4] == 2'b01) nx_stuff_on = 1'b0;
               if (arg[5:4] == 2'b10) nx_stuff_on = 1'b1;
@@ -593,7 +596,7 @@ module loom_engine #(
       stuff_on <= 1'b0; run <= 4'd0; last_bit <= 1'b0;
       tx_lvl <= 1'b0; rx_lvl <= 1'b0; mph <= 1'b0; stuff_err <= 1'b0;
       crc <= 32'd0; crc_skip <= 6'd0;
-      ts_prev <= 1'b0; last_ts <= 16'd0; delta_ts <= 16'd0; edge_flag <= 1'b0;
+      ts_prev <= 1'b0; last_ts <= 16'd0; delta_ts <= 16'd0; edge_flag <= 1'b0; qedge_flag <= 1'b0;
       trap_armed <= 1'b0;
     end else begin
       // ---- execution state
@@ -603,6 +606,7 @@ module loom_engine #(
       stuff_on <= nx_stuff_on; run <= nx_run; last_bit <= nx_last;
       tx_lvl <= nx_tx_lvl; rx_lvl <= nx_rx_lvl; mph <= nx_mph; stuff_err <= nx_stuff_err;
       crc <= nx_crc; crc_skip <= nx_crc_skip; trap_armed <= nx_trap_armed; edge_flag <= nx_edge_flag;
+      qedge_flag <= nx_qedge_flag;
 
       // ---- timestamps (always running)
       ts_prev <= ts_pin_v;
@@ -710,4 +714,5 @@ module loom_engine #(
   assign dbg   = {2'd0, osr_cnt, stuff_on, mph, edge_flag, stuff_err, trap_armed, cb_active,
                   irq_wait, 1'b0, isr_cnt, delay_cnt, pc};
   assign dbg_x = x;
+  assign pc_next_o = restart ? start_addr : nx_pc;
 endmodule
