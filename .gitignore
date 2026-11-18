@@ -20,3 +20,4 @@ runs/
 build/
 __pycache__/
 *.pyc
+tt_submission/
