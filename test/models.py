@@ -657,3 +657,77 @@ def manchester_levels(bits):
     for b in bits:
         out += [0, 1] if b else [1, 0]
     return out
+
+
+class I2CController:
+    """Open-drain I2C controller model (script driven). Records ACKs and read bytes."""
+
+    def __init__(self, sda, scl, half_cycles):
+        self.sda, self.scl, self.h = sda, scl, half_cycles
+        self.sda_drv = None
+        self.scl_drv = None
+        self.script = []
+        self.acks = []
+        self.read = []
+        self._bits = []
+
+    def _w(self, n=None):
+        self.script.append(("wait", n or self.h))
+
+    def start(self):            # SDA falls while SCL high (works as repeated START from SCL low too)
+        self.script += [("sda", None)]; self._w(); self.script += [("scl", None)]; self._w()
+        self.script += [("sda", 0)]; self._w(); self.script += [("scl", 0)]; self._w()
+
+    def stop(self):
+        self.script += [("sda", 0)]; self._w(); self.script += [("scl", None)]; self._w()
+        self.script += [("sda", None)]; self._w(self.h * 4)
+
+    def _bit(self, value, sample=False):
+        self.script += [("sda", None if value else 0)]; self._w()
+        self.script += [("scl", None)]; self._w(self.h // 2)
+        if sample:
+            self.script += [("sample", None)]
+        self._w(self.h - self.h // 2)
+        self.script += [("scl", 0)]
+
+    def write(self, byte):
+        for i in range(7, -1, -1):
+            self._bit((byte >> i) & 1)
+        self._bit(1, sample=True)                 # release SDA, sample target ACK
+        self.script += [("ack", None)]
+
+    def read_byte(self, ack=True):
+        for _ in range(8):
+            self._bit(1, sample=True)
+        self.script += [("byte", None)]
+        self._bit(0 if ack else 1)
+
+    @property
+    def idle(self):
+        return not self.script
+
+    def drives(self):
+        return {self.sda: self.sda_drv, self.scl: self.scl_drv}
+
+    def tick(self, cyc, lv):
+        while self.script:
+            op, arg = self.script[0]
+            if op == "wait":
+                if arg > 1:
+                    self.script[0] = ("wait", arg - 1)
+                    return
+                self.script.pop(0)
+                return
+            self.script.pop(0)
+            if op == "sda":
+                self.sda_drv = arg
+            elif op == "scl":
+                self.scl_drv = arg
+            elif op == "sample":
+                self._bits.append(lv[self.sda])
+            elif op == "ack":
+                self.acks.append(self._bits.pop() == 0)
+            elif op == "byte":
+                b = self._bits[-8:]
+                del self._bits[-8:]
+                self.read.append(sum(v << (7 - i) for i, v in enumerate(b)))

@@ -28,7 +28,7 @@ REQUIRED_COV = ["op0", "op1", "op1_stall", "op2", "op2_stall", "op3", "op3_stall
 
 ENGINE_SIGS = ["pc", "x", "y", "osr", "isr", "osr_cnt", "isr_cnt", "delay_cnt", "irq_wait", "cb_active",
                "cb_left", "div_cnt", "div_acc", "stuff_on", "run", "last_bit", "tx_lvl", "rx_lvl", "mph",
-               "stuff_err", "crc", "crc_skip", "last_ts", "delta_ts", "edge_flag", "trap_armed"]
+               "stuff_err", "crc", "crc_skip", "last_ts", "delta_ts", "edge_flag", "qedge_flag", "trap_armed"]
 
 
 class Lockstep:

@@ -38,10 +38,10 @@ CODE_NONE, CODE_NRZI, CODE_MANCH = 0, 1, 2
 # timestamp edge selection
 EDGE_RISE, EDGE_FALL, EDGE_BOTH = 1, 2, 3
 # events
-EV_PATTERN, EV_STUFF_ERR, EV_CRC_EQ_Y, EV_TIMEOUT, EV_EDGE, EV_TXF_EMPTY, EV_RXF_FULL, EV_ALWAYS = range(8)
+EV_PATTERN, EV_STUFF_ERR, EV_CRC_EQ_Y, EV_TIMEOUT, EV_EDGE, EV_TXF_EMPTY, EV_RXF_FULL, EV_QEDGE = range(8)
 EVENT_NAMES = {
     "pattern": EV_PATTERN, "stufferr": EV_STUFF_ERR, "crc": EV_CRC_EQ_Y, "timeout": EV_TIMEOUT,
-    "edge": EV_EDGE, "txempty": EV_TXF_EMPTY, "rxfull": EV_RXF_FULL, "always": EV_ALWAYS,
+    "edge": EV_EDGE, "txempty": EV_TXF_EMPTY, "rxfull": EV_RXF_FULL, "qedge": EV_QEDGE,
 }
 
 # GPIO numbering helpers (physical pin -> GPIO index)

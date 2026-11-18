@@ -461,6 +461,45 @@ async def manchester_rx(b, bitrate_cycles=60, ppm=0):
     return {"bytes": len(got), "ppm": ppm}
 
 
+# ====================================================================== I2C target
+async def i2c_target(b, half=150):
+    """Loom as an I2C target at address 0x2A, driven by an independent controller model."""
+    p = prog("i2c_target", SCL=1)
+    b.pullups |= {0, 1}
+    ctl = b.add(M.I2CController(sda=0, scl=1, half_cycles=half))
+    await b.load(p, 0)
+    await b.configure(0, p.config(0, in_base=0, jmp_pin=0, set_base=0, set_count=1, out_base=0, out_count=1,
+                                  ts_pin=0, ts_edge=R.EDGE_BOTH, pat_mask=1 << 1, pat_val=1 << 1,
+                                  trap_en=True, trap_event=R.EV_QEDGE, trap_pol=1, trap_addr=p.addr("cond")))
+    await b.write(R.GPIO, 0b01)       # SDA released
+    await b.write(R.OD, 0b01)         # SDA open drain (the target never drives SCL)
+    await b.push(0, 0x2A)             # own address
+    await b.enable(0b0001)
+    await b.cycles(50)
+    # write two bytes
+    ctl.start(); ctl.write(0x2A << 1); ctl.write(0x5E); ctl.write(0xC3); ctl.stop()
+    await b.wait_for(lambda: ctl.idle, max_cycles=half * 200)
+    rx = await b.drain(0)
+    assert ctl.acks == [True, True, True], ctl.acks
+    assert [w & 0xFF for w in rx] == [0x5E, 0xC3], [hex(w) for w in rx]
+    # a transfer to another address is ignored (no ACK, nothing received)
+    ctl.acks.clear()
+    ctl.start(); ctl.write(0x13 << 1); ctl.stop()
+    await b.wait_for(lambda: ctl.idle, max_cycles=half * 100)
+    assert ctl.acks == [False] and await b.drain(0) == []
+    # read three bytes (last one NACKed) after a repeated START
+    await b.push(0, 0xA5 << 24, 0x3C << 24)
+    ctl.acks.clear()
+    ctl.start(); ctl.write(0x2A << 1); ctl.write(0x07)            # "register" byte
+    ctl.start(); ctl.write((0x2A << 1) | 1)
+    ctl.read_byte(); ctl.read_byte(); ctl.read_byte(ack=False); ctl.stop()
+    await b.wait_for(lambda: ctl.idle, max_cycles=half * 400)
+    assert ctl.acks == [True, True, True], ctl.acks
+    assert ctl.read == [0xA5, 0x3C, 0xFF], [hex(x) for x in ctl.read]   # FIFO ran dry -> 0xFF
+    assert [w & 0xFF for w in await b.drain(0)] == [0x07]
+    return {"written": [0x5E, 0xC3], "read": ctl.read}
+
+
 # ====================================================================== everything at once
 async def concurrent(b):
     """UART TX + UART RX + SPI controller + pulse capture on four engines simultaneously."""
@@ -507,6 +546,7 @@ ALL = [
     ("spi_target", spi_target, {}),
     ("i2c", i2c_controller, {}),
     ("i2c_stretch", i2c_controller, {"stretch": 37}),
+    ("i2c_target", i2c_target, {}),
     ("usb_ls_tx", usb_ls_tx, {}),
     ("usb_ls_rx", usb_ls_rx, {}),
     ("usb_ls_rx_skew", usb_ls_rx, {"ppm": 15000}),

@@ -77,7 +77,7 @@ CFG_FIELDS = dict(
 STATE_FIELDS = dict(
     pc=0, x=0, y=0, osr=0, isr=0, osr_cnt=32, isr_cnt=0, delay_cnt=0, irq_wait=0, cb_active=0,
     cb_left=0, div_cnt=0, div_acc=0, stuff_on=0, run=0, last_bit=0, tx_lvl=0, rx_lvl=0, mph=0,
-    stuff_err=0, crc=0, crc_skip=0, ts_prev=0, last_ts=0, delta_ts=0, edge_flag=0, trap_armed=0,
+    stuff_err=0, crc=0, crc_skip=0, ts_prev=0, last_ts=0, delta_ts=0, edge_flag=0, qedge_flag=0, trap_armed=0,
 )
 
 
@@ -124,7 +124,7 @@ class Engine:
             s["edge_flag"],
             int(txf.empty),
             int(rxf.full),
-            1,
+            s["qedge_flag"],
         ]
         trap_fire = s["trap_armed"] and events[c["trap_ev"]] == c["trap_pol"]
 
@@ -187,6 +187,7 @@ class Engine:
         out_osr = funnel if c["out_shr"] else lshift
 
         nx["edge_flag"] = s["edge_flag"] | ts_edge_ev
+        nx["qedge_flag"] = s["qedge_flag"] | (ts_edge_ev & events[0])
         pw_en, pw_dir, pw_base, pw_cnt, pw_val = 0, 0, c["out_base"], c["out_count"], 0
         stall = jump = rpt = 0
         target = 0
@@ -446,6 +447,7 @@ class Engine:
                     if imm & 4:
                         nx["stuff_err"] = 0
                         nx["edge_flag"] = 0
+                        nx["qedge_flag"] = 0
                     if imm & 8:
                         nx["trap_armed"] = c["trap_en"]
                     if (imm >> 4) == 1:
