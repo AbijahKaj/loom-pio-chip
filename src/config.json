@@ -28,14 +28,16 @@
   "MAX_TRANSITION_CONSTRAINT": 1.0,
   "RUN_POST_GRT_RESIZER_TIMING": true,
   "PNR_CORNERS": ["nom_typ_1p20V_25C", "nom_slow_1p08V_125C"],
-  "PL_RESIZER_SETUP_SLACK_MARGIN": 0.25,
+  "PL_RESIZER_SETUP_SLACK_MARGIN": 6,
+  "GRT_RESIZER_SETUP_SLACK_MARGIN": 4,
 
-  "//": "Loom: 25 ns (40 MHz) is the worst-case (slow 1.08 V / 125 C) sign-off target. Run 3 at 16 ns routed",
-  "//": "cleanly (DRC/LVS/antenna pass) with a ~16.4 ns typical-corner and ~26 ns slow-corner critical path.",
+  "//": "Loom: 33 ns (~30 MHz) worst-case (slow 1.08 V / 125 C) sign-off; typical-corner paths are ~19-20 ns.",
+  "//": "Large resizer slack margins keep the optimiser working as if the clock were ~27 ns (run 4 showed a",
+  "//": "relaxed constraint alone lets slow-corner paths grow). Critical path: PC fan-out into the imem mux.",
 
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",
-  "CLOCK_PERIOD": 25,
+  "CLOCK_PERIOD": 33,
 
   "//": "Hold slack margin - Increase them in case you are getting hold violations.",
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
