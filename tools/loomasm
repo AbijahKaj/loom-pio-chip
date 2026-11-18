@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Loom assembler CLI.  usage: tools/loomasm prog.loom [-D NAME=VAL ...] [--hex | --listing] [--origin N]"""
+"""Loom assembler CLI.  usage: tools/loomasm prog.loom [-D NAME=VAL ...] [--hex] [--origin N]   (default output: listing)"""
 import argparse
 import os
 import sys
