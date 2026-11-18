@@ -39,3 +39,25 @@ cd test && make -B GATES=yes
 
 `make -B GATES=synth` simulates the post-synthesis IHP-cell netlist (from `synth/gl_netlist.sh`) with the vendor
 cell models. The smoke test, all 22 protocol scenarios and the host-driver test pass on it (24/24, ~6 min).
+
+
+## SRAM variant (branch `sram-imem`)
+
+Four `RM_IHPSG13_1P_64x16_c2` macros (236.8 × 64.36 µm, one per engine) sit flipped (`FS`) along the bottom edge
+with their Metal2 pins facing the logic. The macros' supply pins are **Metal4 columns, the same layer as the
+tile's power stripes**, so pdngen cannot reach them through vias. The solution is a small hook in
+`src/pdn_cfg.tcl`, with no custom flow steps:
+
+1. **Stripe pitch 44.96 µm** (4 × the macro's 11.24 µm column pitch) and 5.62 µm VPWR→VGND spacing. Each macro is
+   placed so that every stripe crossing it lands on a matching VDD/VSS column, at least 0.89 µm from the opposite
+   net. An exhaustive offset search over the macro LEF chose this placement.
+2. After pdngen, **each stripe that stops at an SRAM is extended across it**, overlapping the original stripe by 1 µm.
+3. **VPWR/VGND pins are rebuilt** from the final stripe metal, so every pin spans the full tile height, as TT's pin
+   check requires.
+
+Result of the quick PDN run: 44 stripes extended, `check_power_grid` 0 errors on both nets, 38 full-height pins per net.
+
+| Run | Result |
+|---|---|
+| 7 | Timing met at all corners at 33 ns with large margins: **slow +7.2 ns (~39 MHz worst case), typical +16.9 ns (~62 MHz)**, versus 32 / 52 MHz for flip-flops. LVS pass. Magic reported 34,721 DRC errors, **all inside the SRAM footprints** (0 elsewhere): Magic does not model the SRAM rule exceptions. 1 antenna net. The **TT precheck on this GDS: IHP KLayout DRC ✅, layer check ✅**; pin check ❌, because the power pins over the SRAMs did not reach the bottom edge (fixed by step 3). |
+| 8 | KLayout DRC sign-off (IHP deck) instead of Magic, more antenna repair, pin rebuild | Running |

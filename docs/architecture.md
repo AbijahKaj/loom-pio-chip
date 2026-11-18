@@ -31,7 +31,7 @@ See also [isa.md](isa.md) (instruction reference), [verification.md](verificatio
   CS_N  ui[1] ──►│  2-FF sync ─► host SPI target ─► register bus ─► imem write, engine config,   │
   MOSI  ui[2] ──►│               (quad-write mode)                  FIFOs, IRQ, GPIO, HOSTCFG    │
   MISO  uo[0] ◄──│                                                                               │
-                 │        ┌───────────── instruction memory 32 × 16 (4 read ports) ──────────┐   │
+                 │        ┌──── 4 × IHP SRAM 64×16 (one per engine, addressed by next-PC) ────┐   │
                  │   ┌────┴────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐                     │   │
                  │   │ engine0 │  │ engine1 │  │ engine2 │  │ engine3 │ ◄── 8 shared IRQ flags   │
                  │   │ +coder  │  │ +coder  │  │ +coder  │  │ +coder  │ ◄── 16-bit timestamp     │
@@ -177,7 +177,7 @@ buffers on this design.
 |---|---|
 | Std-cell area (Yosys/ABC, typ corner, pre-PnR) | ~459k µm² (~38% of the 8x4 core) |
 | Flip-flops | ~3.8k |
-| Instruction memory | 32 × 16 flops, 4 read ports (the ISA has 6-bit addresses; 64 entries fit the area but not the 3-layer routing budget) |
+| Instruction memory | **SRAM variant (this branch):** four IHP `RM_IHPSG13_1P_64x16_c2` macros, one 64-instruction bank per engine, addressed with the engine's *next* PC so the registered SRAM output always holds `imem[pc]` (cycle-identical to the flip-flop version). **Flip-flop variant (`main`):** 32 × 16 flops with 4 read ports. |
 | Clock | Signed off at 25 ns (40 MHz) at all corners; routed critical path ≈16.4 ns at typical (60 MHz capable at nominal conditions), ≈26 ns at slow 1.08 V/125 °C |
 | Critical path | PC → 32:1 instruction-memory read → decode (high fanout) → execute, in one cycle. A registered instruction fetch is the next step for worst-case 60 MHz. |
 
@@ -192,8 +192,6 @@ Final numbers are in the hardening summary of the submission.
   claimed; the same Manchester receive path is demonstrated at 1 Mb/s (`manchester_rx`).
 * FIFOs are 2 deep. Fast receive protocols should use autopush at 32 bits so the host has time to drain.
 * SPI target mode supports SCK up to about f_clk/24 (synchroniser plus instruction latency).
-* No I2C *target* program. START/STOP detection needs "SDA changed while SCL is high", a condition on two pins
-  and an edge. The current ISA can only express that with a polling loop or two cooperating engines, which does
-  not fit alongside a byte engine in 32 instructions. Candidate extensions: a second pattern register (WAIT/trap on
-  either pattern), or an IRQ flag as a trap event so one engine can redirect another. SPI target already
-  demonstrates the target role.
+* I2C *target* (`i2c_target`, 47 instructions) needs a 64-instruction bank, so it is available on the SRAM
+  variant only. It uses the *qualified-edge* event (event 7: an edge on `ts_pin` while the pin pattern matches),
+  which detects START/STOP as "SDA changed while SCL is high".
