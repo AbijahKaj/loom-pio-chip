@@ -19,5 +19,7 @@
 - [ ] Official gate-level test on the PnR netlist (`make -B GATES=yes`).
 - [ ] Update `docs/architecture.md` §6 and `docs/hardening.md` with the final PnR numbers.
 - [x] AI-usage section written (docs/verification.md §6); edit if you want different wording
-- [ ] Optional: I2C target program; an RP2350 PIO-based SPI for faster host access; demo video.
+- [x] I2C target program (SRAM variant: 64 instructions per engine)
+- [x] SRAM instruction memory: signed off (run 8), TT precheck passed, gate level 26/26
+- [ ] Optional: an RP2350 PIO-based SPI for faster host access; demo video.
 - [ ] Make the repository public and submit the form (link to be published on the competition page).
