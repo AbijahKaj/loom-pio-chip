@@ -209,7 +209,7 @@ proc loom_extend_stripes_over_srams {} {
                 foreach w [$sw getWires] {
                     if { [$w isVia] || [$w getTechLayer] != $m4 } { continue }
                     set x0 [$w xMin]; set x1 [$w xMax]; set y0 [$w yMin]
-                    if { $x0 < $ix0 || $x1 > $ix1 } { continue }
+                    if { $x1 <= $ix0 || $x0 >= $ix1 } { continue }
                     if { $y0 >= $iy1 && $y0 - $iy1 <= 5 * $dbu } {
                         lappend boxes [list $x0 $iy0 $x1 [expr {$y0 + $dbu}]]
                     }
@@ -222,6 +222,51 @@ proc loom_extend_stripes_over_srams {} {
         }
     }
     puts "\[INFO\] Loom: extended $added power stripes across the SRAM macros"
+    loom_rebuild_power_pins
+}
+
+# Tiny Tapeout's precheck requires every power pin to reach both the top and bottom tile edges.
+# pdngen created the pins before the stripes were extended, so rebuild them from the actual metal:
+# merge each stripe's segments and declare a pin wherever a stripe spans the full core height.
+proc loom_rebuild_power_pins {} {
+    set block [ord::get_db_block]
+    set m4 [[ord::get_db_tech] findLayer $::env(PDN_VERTICAL_LAYER)]
+    set dbu [$block getDefUnits]
+    set core [$block getCoreArea]
+    set ylo [expr {[$core yMin] + 10 * $dbu}]
+    set yhi [expr {[$core yMax] - 10 * $dbu}]
+    foreach netname [list $::env(VDD_NET) $::env(GND_NET)] {
+        set net [$block findNet $netname]
+        set bterm [$block findBTerm $netname]
+        if { $bterm == "NULL" } { continue }
+        set segs [dict create]
+        foreach sw [$net getSWires] {
+            foreach w [$sw getWires] {
+                if { [$w isVia] || [$w getTechLayer] != $m4 } { continue }
+                dict lappend segs "[$w xMin] [$w xMax]" [list [$w yMin] [$w yMax]]
+            }
+        }
+        foreach bp [$bterm getBPins] { odb::dbBPin_destroy $bp }
+        set npins 0
+        dict for {xs ivs} $segs {
+            set ivs [lsort -integer -index 0 $ivs]
+            set cur [lindex $ivs 0]
+            foreach iv [lrange $ivs 1 end] {
+                if { [lindex $iv 0] <= [lindex $cur 1] } {
+                    if { [lindex $iv 1] > [lindex $cur 1] } { lset cur 1 [lindex $iv 1] }
+                } else {
+                    break
+                }
+            }
+            if { [lindex $cur 0] <= $ylo && [lindex $cur 1] >= $yhi } {
+                set bp [odb::dbBPin_create $bterm]
+                odb::dbBox_create $bp $m4 {*}[lindex $xs 0] [lindex $cur 0] [lindex $xs 1] [lindex $cur 1]
+                $bp setPlacementStatus FIRM
+                incr npins
+            }
+        }
+        puts "\[INFO\] Loom: $netname has $npins full-height pins"
+    }
 }
 
 if { [info commands loom_pdngen_orig] == "" } {
