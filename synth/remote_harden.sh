@@ -5,9 +5,9 @@
 #   synth/remote_harden.sh fetch   copy the results back into ./runs/wokwi (final/, reports, logs)
 #   synth/remote_harden.sh pdn     quick run that stops after power-grid generation (floorplan/PDN checks)
 # Everything on the remote side lives in ~/$RDIR. BRANCH selects the git branch (default: current).
-# Run from the repo root.
+# Run from the repo root. HOST (user@host of the Linux box) must be set, e.g. HOST=me@buildbox.
 set -e
-HOST=${HOST:-admin-ml@admin-ml}
+: "${HOST:?set HOST=user@host of the Linux build box}"
 RDIR=${RDIR:-loom-harden}
 BRANCH=${BRANCH:-$(git rev-parse --abbrev-ref HEAD)}
 SHARED=${SHARED:-loom-harden}                # where librelane/, pdk/, venv/ already live
