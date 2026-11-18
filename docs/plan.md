@@ -13,11 +13,10 @@
 
 ## Remaining
 
-- [ ] **Harden on the Linux build machine** (`synth/harden.sh`; Docker or Nix needed there), check routing DRC = 0,
-      timing at 16 ns, TT precheck. If routing still congests: reduce the side-set/pin rotators or the FIFO read
-      muxes next.
-- [ ] Official gate-level test on the PnR netlist (`make -B GATES=yes`).
-- [ ] Update `docs/architecture.md` §6 and `docs/hardening.md` with the final PnR numbers.
+- [x] Hardened on the Linux build machine (Nix, `synth/remote_harden.sh`): **run 6 signed off**: DRC/LVS/antenna
+      clean, timing met at all corners (30 MHz worst case, ~52 MHz typical), **TT precheck passed**
+- [x] Official gate-level test on the routed netlist: 25/25
+- [x] Final PnR numbers in `docs/architecture.md` §6 and `docs/hardening.md`
 - [x] AI-usage section written (docs/verification.md §6); edit if you want different wording
 - [ ] Optional: I2C target program; an RP2350 PIO-based SPI for faster host access; demo video.
 - [ ] Make the repository public and submit the form (link to be published on the competition page).

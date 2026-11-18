@@ -37,6 +37,12 @@ cp runs/wokwi/final/nl/tt_um_abijahkaj_loom.nl.v test/gate_level_netlist.v
 cd test && make -B GATES=yes
 ```
 
+## Tiny Tapeout precheck
+
+Run 6's submission bundle (`tt_tool --create-tt-submission`: GDS, LEF, Verilog) **passes the Tiny Tapeout
+precheck** (`tt/precheck/precheck.py`), including the full IHP SG13CMOS5L KLayout DRC deck, pin/label checks,
+zero-area check and Verilog syntax check.
+
 ## Gate-level simulation
 
 **On the routed netlist (run 6, official `GATES=yes` flow):** the smoke test and all 24 protocol/host tests pass
