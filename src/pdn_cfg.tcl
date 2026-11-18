@@ -185,33 +185,49 @@ if { $::env(PDN_CORE_RING) == 1 } {
 }
 
 # ---------------------------------------------------------------------------------------------
-# Loom: the SRAM macros (RM_IHPSG13_1P_64x16_c2) have their supply pins as Metal4 columns, the
-# same layer as the tile's power stripes, so the default macro grid (which connects through vias)
-# would be empty. Instead the SRAMs get their own grid drawn over the instance boundary with the
-# *same* stripe pitch and spacing as the core grid, offset so that every stripe lands on a matching
-# VDD/VSS supply column (macro x0 placed 39.55 um left of a core stripe). These stripes therefore
-# continue the core stripes straight across each macro and connect to its pins by overlap.
+# Loom: the SRAM macros (RM_IHPSG13_1P_64x16_c2) have their supply pins as Metal4 columns, the same
+# layer as the tile's power stripes. pdngen cuts the stripes at every macro and has no same-layer
+# way to reach the pins (a macro grid's stripes end 0.48 um short of the core stripes and are then
+# removed as floating). The macros are therefore placed so that every core stripe crossing them
+# lands on a matching VDD/VSS column (>= 1.9 um from the opposite net), and after pdngen each stripe
+# that stops just above an SRAM is extended straight down across it, overlapping the original stripe
+# by 1 um. This wraps `pdngen`, which LibreLane's pdn.tcl calls right after sourcing this file.
 # ---------------------------------------------------------------------------------------------
-set has_sram 0
-foreach inst [[ord::get_db_block] getInsts] {
-    if { [[$inst getMaster] getName] == "RM_IHPSG13_1P_64x16_c2" } { set has_sram 1 }
+proc loom_extend_stripes_over_srams {} {
+    set block [ord::get_db_block]
+    set m4 [[ord::get_db_tech] findLayer $::env(PDN_VERTICAL_LAYER)]
+    set dbu [$block getDefUnits]
+    set added 0
+    foreach inst [$block getInsts] {
+        if { [[$inst getMaster] getName] != "RM_IHPSG13_1P_64x16_c2" } { continue }
+        set bb [$inst getBBox]
+        set ix0 [$bb xMin]; set ix1 [$bb xMax]; set iy0 [$bb yMin]; set iy1 [$bb yMax]
+        foreach netname [list $::env(VDD_NET) $::env(GND_NET)] {
+            set net [$block findNet $netname]
+            foreach sw [$net getSWires] {
+                set boxes [list]
+                foreach w [$sw getWires] {
+                    if { [$w isVia] || [$w getTechLayer] != $m4 } { continue }
+                    set x0 [$w xMin]; set x1 [$w xMax]; set y0 [$w yMin]
+                    if { $x0 < $ix0 || $x1 > $ix1 } { continue }
+                    if { $y0 >= $iy1 && $y0 - $iy1 <= 5 * $dbu } {
+                        lappend boxes [list $x0 $iy0 $x1 [expr {$y0 + $dbu}]]
+                    }
+                }
+                foreach b $boxes {
+                    odb::dbSBox_create $sw $m4 {*}$b STRIPE
+                    incr added
+                }
+            }
+        }
+    }
+    puts "\[INFO\] Loom: extended $added power stripes across the SRAM macros"
 }
-if { $has_sram } {
-    define_pdn_grid \
-        -macro \
-        -cells {RM_IHPSG13_1P_64x16_c2} \
-        -name sram_grid \
-        -starts_with POWER \
-        -grid_over_boundary \
-        -halo "0 0"
 
-    add_pdn_stripe \
-        -grid sram_grid \
-        -layer $::env(PDN_VERTICAL_LAYER) \
-        -width $::env(PDN_VWIDTH) \
-        -pitch $::env(PDN_VPITCH) \
-        -offset 39.55 \
-        -spacing $::env(PDN_VSPACING) \
-        -starts_with POWER \
-        -extend_to_boundary
+if { [info commands loom_pdngen_orig] == "" } {
+    rename pdngen loom_pdngen_orig
+    proc pdngen { args } {
+        loom_pdngen_orig {*}$args
+        loom_extend_stripes_over_srams
+    }
 }
