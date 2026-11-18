@@ -5,9 +5,9 @@ Loom is checked in four independent layers. Each one catches a different class o
 | Layer | What it checks | Where |
 |---|---|---|
 | 1. Golden model + lockstep diff | Every architectural register of every engine, the GPIO/OE outputs and the IRQ flags, compared **every clock cycle** between the RTL and the Python ISS, over random programs, configurations, pin stimulus and host traffic | `tools/loom/sim.py`, `test/test_diff.py` |
-| 2. Protocol scenarios | 22 end-to-end protocol tests against **independent** device models (written from the protocol specifications, sharing no code with the engine or its programs), run on both the ISS and the RTL, with all host accesses through the real SPI interface | `test/scenarios.py`, `test/models.py`, `test/test_protocols.py`, `test/run_iss.py` |
+| 2. Protocol scenarios | 25 end-to-end protocol tests against **independent** device models (written from the protocol specifications, sharing no code with the engine or its programs), run on both the ISS and the RTL, with all host accesses through the real SPI interface | `test/scenarios.py`, `test/models.py`, `test/test_protocols.py`, `test/run_iss.py` |
 | 3. Formal | k-induction proof of the FIFO against a reference queue; bounded model check of the engine's core invariants from reset | `formal/`, assertions under `` `ifdef FORMAL `` in `src/loom_engine.v` |
-| 4. Gate level | The smoke test, **all protocol scenarios and the host-driver test**, on the post-synthesis IHP-cell netlist (33.9k cells, vendor cell models): 24/24 pass. The official PnR-netlist run (`GATES=yes`) follows hardening. | `make -B GATES=synth` / `GATES=yes` |
+| 4. Gate level | The smoke test, **all protocol scenarios and the host-driver test**, **on the routed (post-PnR) netlist with IHP's SRAM model: 26/26 pass** (official `GATES=yes` flow; the earlier flip-flop variant also passed 25/25 on its routed netlist). | `make -B GATES=synth` / `GATES=yes` |
 
 ## 1. Golden model and lockstep differential testing
 
@@ -44,6 +44,7 @@ Each scenario configures engines exactly as an application would and checks the 
 | UART TX + RX at 500 kbaud, framing-error IRQ | `UartMonitor` / `UartDriver` |
 | SPI controller, modes 0, 1, 2, 3 (full duplex) | `SpiTarget` (any CPOL/CPHA) |
 | SPI target with CS-abort trap | `SpiController` (incl. a transfer aborted mid-byte) |
+| I2C target: address match, write, repeated-START read, NACK end, ignore other addresses | `I2CController` (independent open-drain controller model) |
 | I2C controller: write, repeated-start read, NACK; with and without clock stretching | `I2CTarget` (24Cxx-style register memory, open drain, wired-AND bus) |
 | USB low-speed TX: DATA0 setup packet, stuffing-heavy packet, handshake | `UsbLsMonitor` (NRZI decode, de-stuff, EOP) and a reference CRC16 |
 | USB low-speed RX, incl. **1.5% clock error** and a corrupted packet | `UsbLsDriver`; the hardware CRC residue must be 0x800D for good packets and differ for the corrupted one |
