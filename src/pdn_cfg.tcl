@@ -192,16 +192,14 @@ if { $::env(PDN_CORE_RING) == 1 } {
 # VDD/VSS supply column (macro x0 placed 39.55 um left of a core stripe). These stripes therefore
 # continue the core stripes straight across each macro and connect to its pins by overlap.
 # ---------------------------------------------------------------------------------------------
-set sram_insts [list]
+set has_sram 0
 foreach inst [[ord::get_db_block] getInsts] {
-    if { [[$inst getMaster] getName] == "RM_IHPSG13_1P_64x16_c2" } {
-        lappend sram_insts [$inst getName]
-    }
+    if { [[$inst getMaster] getName] == "RM_IHPSG13_1P_64x16_c2" } { set has_sram 1 }
 }
-if { [llength $sram_insts] > 0 } {
+if { $has_sram } {
     define_pdn_grid \
         -macro \
-        -instances $sram_insts \
+        -cells {RM_IHPSG13_1P_64x16_c2} \
         -name sram_grid \
         -starts_with POWER \
         -grid_over_boundary \
