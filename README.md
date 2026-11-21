@@ -25,6 +25,7 @@ pattern events that can trap the program counter. Together they let the same sil
 * [docs/architecture.md](docs/architecture.md): design, pins, register map, line helpers, area
 * [docs/isa.md](docs/isa.md): instruction set reference
 * [docs/verification.md](docs/verification.md): lockstep golden-model testing, protocol models, formal, gate level, bug log
+* [AI assistance](docs/verification.md#6-tools-and-ai-assistance): how AI tools were used and how their output was checked
 * [docs/hardening.md](docs/hardening.md): flow settings and PnR history
 * [docs/info.md](docs/info.md): Tiny Tapeout datasheet page
 
