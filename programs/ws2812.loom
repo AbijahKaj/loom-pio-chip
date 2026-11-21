@@ -1,4 +1,4 @@
-; WS2812 / NeoPixel driver, 800 kb/s. 10 ticks per bit: clkdiv = f_clk / 8 MHz (7.5 at 60 MHz).
+; WS2812 / NeoPixel driver, 800 kb/s. 10 ticks per bit: clkdiv = f_clk / 8 MHz (3.75 at 30 MHz, 7.5 at 60 MHz).
 ; '0' = 3 ticks high (0.375 us), '1' = 7 ticks high (0.875 us).
 ; side-set base = DIN. out_shift_right = 0, autopull threshold 24 (GRB in bits [31:8]).
 .program ws2812

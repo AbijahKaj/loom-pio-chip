@@ -1,5 +1,5 @@
 ; 10BASE-T transmitter: Manchester encoding at 10 Mb/s (20 M symbols/s).
-; clkdiv = f_clk / 20 MHz (3 at 60 MHz): one tick per half bit.
+; clkdiv = f_clk / 20 MHz (3 at 60 MHz, 2 at 40 MHz): one tick per half bit. Needs an integer divider.
 ; out_base = set_base = TD+ (GPIO n), TD- = GPIO n+1 (diff), set_count = 2.
 ; Coder: Manchester, IEEE polarity ('1' = low->high), no stuffing.
 ; out_shift_right = 1 (Ethernet is LSB first), autopull threshold 32.

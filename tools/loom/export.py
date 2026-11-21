@@ -5,9 +5,9 @@ the MicroPython host driver (host/loomhost.py) can load with Loom.run(APP).
 usage:
   python3 tools/loom/export.py ENGINE:ORIGIN:PROGRAM.loom[:key=value,...] ... [--gpio 0x2000] [--od 0x3]
 
-example (UART TX on GPIO13 at 115200 baud, 60 MHz clock):
+example (UART TX on GPIO13 at 115200 baud, 30 MHz clock):
   python3 tools/loom/export.py \\
-    0:0:programs/uart_tx.loom:clkdiv=130.208,out_base=13,out_count=1,sideset_base=13,out_shift_right=1 \\
+    0:0:programs/uart_tx.loom:clkdiv=65.104,out_base=13,out_count=1,sideset_base=13,out_shift_right=1 \\
     --gpio 0x2000 > uart_demo.py
 """
 import argparse

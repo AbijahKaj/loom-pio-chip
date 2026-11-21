@@ -1,5 +1,5 @@
 ; Low-speed USB (1.5 Mb/s) packet transmitter: NRZI + bit stuffing + EOP, all in the coder.
-; clkdiv = f_clk / 1.5 MHz (40 at 60 MHz): one tick per bit.
+; clkdiv = f_clk / 1.5 MHz (20 at 30 MHz, 40 at 60 MHz): one tick per bit.
 ; out_base = set_base = D- (GPIO n), D+ = GPIO n+1, out_count = set_count = 2.
 ; Coder: NRZI (toggle on 0), stuffing after 6 ones, diff output, idle level 1 (J: D- high).
 ; out_shift_right = 1, autopull threshold 32.

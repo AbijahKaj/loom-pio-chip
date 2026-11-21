@@ -40,9 +40,9 @@
   "PL_RESIZER_SETUP_SLACK_MARGIN": 6,
   "GRT_RESIZER_SETUP_SLACK_MARGIN": 4,
 
-  "//": "Loom: 33 ns (~30 MHz) worst-case (slow 1.08 V / 125 C) sign-off; typical-corner paths are ~19-20 ns.",
+  "//": "Loom: 33 ns (~30 MHz) constraint, met at all corners; run 8 paths: slow 1.08 V / 125 C ~25.9 ns (38 MHz), typical ~16.1 ns.",
   "//": "Large resizer slack margins keep the optimiser working as if the clock were ~27 ns (run 4 showed a",
-  "//": "relaxed constraint alone lets slow-corner paths grow). Critical path: PC fan-out into the imem mux.",
+  "//": "relaxed constraint alone lets slow-corner paths grow). Critical path: SRAM read -> decode -> execute -> next PC.",
 
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",

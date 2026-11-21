@@ -1,7 +1,8 @@
 # Loom: a programmable protocol engine ASIC
 
 Loom is an entry for the Jane Street × Tiny Tapeout protocol emulator competition. It targets
-IHP 130 nm CMOS5L, 8x4 tiles (~1.2 mm² die), and a 60 MHz clock.
+IHP 130 nm CMOS5L, 8x4 tiles (~1.2 mm² die). Timing is signed off at 38 MHz worst case and ~62 MHz typical (§6);
+the Tiny Tapeout default clock in `info.yaml` is 30 MHz. Clock-dependent figures below give f_clk or both values.
 
 The chip has four small, cycle-exact **bit engines** in the spirit of the RP2040's PIO. Each engine also has
 **line helpers**: generic hardware for the parts of real protocols that a plain shift-and-toggle machine handles
@@ -59,7 +60,7 @@ write the same pin in a cycle, the highest-numbered engine wins, as on PIO.
 
 ### 2.2 Host interface
 
-The host is an SPI target (mode 0, oversampled; SCK ≤ clk/8, so 7.5 MHz at 60 MHz). The demo board's RP2350 is the
+The host is an SPI target (mode 0, oversampled; SCK ≤ f_clk/8: 3.75 MHz at 30 MHz, 7.5 MHz at 60 MHz). The demo board's RP2350 is the
 intended host; see `host/loomhost.py`.
 
 A transaction is: `CS_N` low, a command byte `{rw, addr[6:0]}`, then 4 bytes per 32-bit word (little-endian, MSB-first
@@ -68,7 +69,7 @@ streams go in one transaction.
 
 - **Reads** peek a word when it starts and only *commit* a FIFO pop once the host clocks that word, so a trailing
   read-ahead never loses data.
-- **Quad-write mode** (`HOSTCFG[0]`) moves write data on `{GPIO10, GPIO9, GPIO8, MOSI}`, 4 bits per clock (~30 Mb/s).
+- **Quad-write mode** (`HOSTCFG[0]`) moves write data on `{GPIO10, GPIO9, GPIO8, MOSI}`, 4 bits per SCK clock (~15 Mb/s at 30 MHz, ~30 Mb/s at 60 MHz).
   This is what makes full-rate 10BASE-T transmit possible.
 
 | Addr | Register | Access | Description |
@@ -188,9 +189,13 @@ Final numbers are in the hardening summary of the submission.
 
 ## 7. Known limitations
 
-* The host link (≤7.5 MHz single, ~30 Mb/s quad-write) bounds sustained streaming. 10BASE-T transmit needs paced
-  quad writes. 10BASE-T *receive* at the full 10 Mb/s (3 clocks per half-bit, behind a 2-FF synchroniser) is not
-  claimed; the same Manchester receive path is demonstrated at 1 Mb/s (`manchester_rx`).
+* The host link (SCK ≤ f_clk/8; quad-write ~30 Mb/s at 60 MHz) bounds sustained streaming. 10BASE-T transmit needs
+  paced quad writes. 10BASE-T *receive* at the full 10 Mb/s (3 clocks per half-bit at 60 MHz, behind a 2-FF
+  synchroniser) is not claimed; the same Manchester receive path is demonstrated at 1 Mb/s (`manchester_rx`).
+* Clock: full-rate 10BASE-T transmit needs an integer divider from 20 MHz, i.e. a 40 MHz (`clkdiv` 2) or 60 MHz
+  (`clkdiv` 3) clock. The tests run it at `clkdiv` 3 on the 62.5 MHz simulation clock; 60 MHz is within the
+  typical-corner figure but above the 38 MHz worst case, and 40 MHz is not simulated. The other protocols only change their divider with the clock. All
+  RTL and gate-level tests are functional simulations with a 16 ns (62.5 MHz) clock; real timing comes from STA.
 * FIFOs are 2 deep. Fast receive protocols should use autopush at 32 bits so the host has time to drain.
 * SPI target mode supports SCK up to about f_clk/24 (synchroniser plus instruction latency).
 * I2C *target* (`i2c_target`, 47 instructions) needs a 64-instruction bank, so it is available on the SRAM

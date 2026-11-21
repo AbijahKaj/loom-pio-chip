@@ -11,7 +11,7 @@ from loom import regs as R  # noqa: E402
 from loom.asm import assemble_file  # noqa: E402
 
 PROG_DIR = os.path.join(os.path.dirname(__file__), "..", "programs")
-CLK_NS = 16          # ~60 MHz
+CLK_NS = 16          # 62.5 MHz; functional simulation only, real timing comes from STA
 SPI_HALF = 5         # SCK half period in clk cycles (SCK = clk/10)
 GATES = os.environ.get("GATES") == "yes"
 

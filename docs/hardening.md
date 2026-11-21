@@ -7,7 +7,7 @@
 | `SYNTH_STRATEGY` | `AREA 0` | LibreLane's default `DELAY 4` ABC script inserted ~34k buffers on this design (947k µm² instance area, detailed placement failed). `AREA 0` maps it to ~460k µm². Timing is then fixed in PnR by the resizer. |
 | `PL_TARGET_DENSITY_PCT` | 50 | Spread the cells: only Metal2–4 are available for signal routing on the TT IHP tiles. |
 | `GRT_ADJUSTMENT` | 0.2 | Default 0.3. Global routing itself reported that the derating was too pessimistic. |
-| `CLOCK_PERIOD` | 33 ns | Sign-off at **all** corners (TT sets `TIMING_VIOLATION_CORNERS = *`): 30 MHz with margin at slow 1.08 V/125 °C; ~52 MHz at typical. |
+| `CLOCK_PERIOD` | 33 ns | Sign-off at **all** corners (TT sets `TIMING_VIOLATION_CORNERS = *`): met with margin: run 8 (SRAM) reaches 38 MHz at slow 1.08 V/125 °C and ~62 MHz at typical (the flip-flop run 6: 32 / 52 MHz). |
 | `MAX_TRANSITION_CONSTRAINT`, `RUN_POST_GRT_RESIZER_TIMING`, `PNR_CORNERS` | 1.0 ns, on, typ+slow | Without these, PnR optimised only the typical corner and left hundreds of slow-corner slew violations (runs 3–4). |
 | `PL_/GRT_RESIZER_SETUP_SLACK_MARGIN` | 6 / 4 ns | Keeps the optimiser working as if the clock were faster; a relaxed constraint alone let slow paths grow (run 4). |
 

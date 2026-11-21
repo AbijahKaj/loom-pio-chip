@@ -19,12 +19,12 @@ moves data through each engine's TX/RX FIFOs. An optional quad-write mode quadru
 
 ## How to test
 
-1. Hold `rst_n` low, then release it. Read register 0x00 over SPI (mode 0, ≤ 7.5 MHz at a 60 MHz clock); it
+1. Hold `rst_n` low, then release it. Read register 0x00 over SPI (mode 0, SCK ≤ f_clk/8: 3.75 MHz at the default 30 MHz clock); it
    returns `0x4C4F4F4D` ("LOOM"). A command byte is `{rw, addr[6:0]}`, followed by little-endian 32-bit words.
 2. Use the MicroPython driver `host/loomhost.py` together with the assembler `tools/loom/asm.py` (assemble on a PC, then
    copy the hex words), or assemble ahead of time. Example, UART TX at 115200 baud on GPIO13 (`uo[1]`):
    * write the four `uart_tx` instructions to `IMEM_DATA` (0x05);
-   * configure engine 0: `CLKDIV` = 60 MHz / (4 × 115200), `out_base = sideset_base = 13`, `out_shift_right = 1`,
+   * configure engine 0: `CLKDIV` = f_clk / (4 × 115200), i.e. 65.104 at 30 MHz, `out_base = sideset_base = 13`, `out_shift_right = 1`,
      side-set 1 bit optional;
    * write `GPIO` (0x07) = `1 << 13` (line idle high), then `CTRL` (0x01) = `0x11` (enable + restart engine 0);
    * push bytes to `TXF` (0x14) and watch them arrive on `uo[1]`.
@@ -35,4 +35,4 @@ moves data through each engine's TX/RX FIFOs. An optional quad-write mode quadru
 * None for UART, SPI, PS/2, WS2812 or pulse-capture demos (3.3 V logic, Pmod-compatible headers).
 * I2C: pull-up resistors (e.g. 4.7 kΩ) on GPIO0/GPIO1 (`uio[0]`, `uio[1]`), which run in open-drain mode.
 * USB low speed: series resistors and a 1.5 kΩ pull-up on D- (device side); 3.3 V signalling.
-* 10BASE-T: a magnetics/transformer Pmod on the differential TX pair; CAN: a CAN transceiver Pmod.
+* 10BASE-T: a magnetics/transformer Pmod on the differential TX pair, and a 40 or 60 MHz clock (see the architecture doc); CAN: a CAN transceiver Pmod.
